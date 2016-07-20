@@ -1,3 +1,4 @@
+#define MOONBASE_BOARD
 /* WeMos DHT Server
  *
  * Connect to WiFi and respond to http requests with temperature and humidity
@@ -11,21 +12,32 @@
 
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
-#include <DHT.h>
 
+
+#ifdef MOONBASE_BOARD
+#include <Wire.h>
+#include <HTS221.h>
+#include <LPS25H.h>
+
+#else
+#include <DHT.h>
 #define DHTTYPE DHT22   // DHT Shield uses DHT 11
 #define DHTPIN D4       // DHT Shield uses pin D4
+#endif
 
 //const char* DEVNAME = "VCW100” ; const char* ISSUEID  = “ZGKL01”; const char* ssid = ""; const char* password = “”;
 
 
 IPAddress server(120,138,27,109);
 
+#ifdef MOONBASE_BOARD
+#else
 // Initialize DHT sensor
 // Note that older versions of this library took an optional third parameter to
 // tweak the timings for faster processors.  This parameter is no longer needed
 // as the current DHT reading algorithm adjusts itself to work on faster procs.
 DHT dht(DHTPIN, DHTTYPE);
+#endif
 
 float humidity, temperature;                 // Raw float values from the sensor
 char str_humidity[10], str_temperature[10];  // Rounded sensor values and as strings
@@ -49,14 +61,20 @@ void read_sensor() {
     // Save the last time you read the sensor
     previousMillis = currentMillis;
 
+#ifdef MOONBASE_BOARD
+    humidity = smeHumidity.readHumidity();
+    temperature = smeHumidity.readTemperature();
+    pressure = smePressure.readTemperature();
+#else
     // Reading temperature and humidity takes about 250 milliseconds!
     // Sensor readings may also be up to 2 seconds 'old' (it's a very slow sensor)
     humidity = dht.readHumidity();        // Read humidity as a percent
     temperature = dht.readTemperature();  // Read temperature as Celsius
+#endif
 
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temperature)) {
-      Serial.println("Failed to read from DHT sensor!");
+      Serial.println("Failed to read from sensors!");
       return;
     }
 
@@ -64,6 +82,11 @@ void read_sensor() {
     dtostrf(humidity, 1, 2, str_humidity);
     dtostrf(temperature, 1, 2, str_temperature);
 
+#ifdef MOONBASE_BOARD
+    dtostrf(pressure, 1, 2, str_pressure);
+    Serial.print("Pressure: ");
+    Serial.print(str_Pressure);
+#endif
     Serial.print("Humidity: ");
     Serial.print(str_humidity);
     Serial.print(" %\t");
@@ -113,9 +136,16 @@ void setup(void)
 {
   // Open the Arduino IDE Serial Monitor to see what the code is doing
   Serial.begin(115200);
+#ifdef MOONBASE_BOARD
+    Wire.begin();
+    smePressure.begin();
+    smeHumidity.begin();
+    Serial.println("VCW sensor Server");
+#else
   dht.begin();
-
   Serial.println("WeMos DHT Server");
+#endif
+
   _ESP_id = ESP.getChipId();  // uint32 -> unsigned long on arduino
   Serial.println(_ESP_id,HEX);
   Serial.println("");
@@ -132,7 +162,12 @@ void loop(void)
   delay(60000);
   read_sensor();
   
-  if (WiFiState == UP) { httpsRequest(temperature,humidity); }
+  if (WiFiState == UP) 
+#ifdef MOONBASE_BOARD
+  	{ httpsRequest(temperature,humidity, pressure); }
+#else
+  	{ httpsRequest(temperature,humidity); }
+#endif
 
   // Connect to your WiFi network
   if (WiFiState == DOWN) {
@@ -151,7 +186,11 @@ void loop(void)
 
 
 // this method makes a HTTP connection to the server:
-void httpRequest(float temp, float humid) {
+void httpRequest(float temp, float humid
+#ifdef MOONBASE_BOARD
+, float pressure
+#endif
+) {
 
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
@@ -172,6 +211,10 @@ void httpRequest(float temp, float humid) {
   url += temp;
   url += "&indoorhumidity=";
   url += humid;
+#ifdef MOONBASE_BOARD
+  url += "&indoorpressure=";
+  url += pressure;
+#endif
  
   
   Serial.print("Requesting URL: ");
@@ -212,7 +255,11 @@ void httpRequest(float temp, float humid) {
 const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50 DD 5C";
 
 // this method makes a HTTP connection to the server:
-void httpsRequest(float temp, float humid) {
+void httpsRequest(float temp, float humid
+#ifdef MOONBASE_BOARD
+, float pressure
+#endif
+) {
 
   // Use WiFiClientSecure class to create TLS connection
   WiFiClientSecure client;
@@ -241,6 +288,10 @@ void httpsRequest(float temp, float humid) {
   url += temp;
   url += "&indoorhumidity=";
   url += humid;
+#ifdef MOONBASE_BOARD
+  url += "&indoorpressure=";
+  url += pressure;
+#endif
  
  
   
