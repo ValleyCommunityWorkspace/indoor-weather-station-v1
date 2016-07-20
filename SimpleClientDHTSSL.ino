@@ -1,4 +1,4 @@
-#define MOONBASE_BOARD
+//#define MOONBASE_BOARD
 /* WeMos DHT Server
  *
  * Connect to WiFi and respond to http requests with temperature and humidity
@@ -25,12 +25,21 @@
 #define DHTPIN D4       // DHT Shield uses pin D4
 #endif
 
-//const char* DEVNAME = "VCW100” ; const char* ISSUEID  = “ZGKL01”; const char* ssid = ""; const char* password = “”;
 
+//const char* DEVNAME = "VCW100” ; const char* ISSUEID  = ZGKL01“”; const char* ssid = ""; const char* password = “”;
+extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
+
+void httpsRequest(float temp, float humid
+#ifdef MOONBASE_BOARD
+, float pressure
+#endif
+);
 
 IPAddress server(120,138,27,109);
 
 #ifdef MOONBASE_BOARD
+float pressure;         // Raw float values from the sensor
+char str_pressure[10];  // Rounded sensor values and as strings
 #else
 // Initialize DHT sensor
 // Note that older versions of this library took an optional third parameter to
@@ -64,7 +73,7 @@ void read_sensor() {
 #ifdef MOONBASE_BOARD
     humidity = smeHumidity.readHumidity();
     temperature = smeHumidity.readTemperature();
-    pressure = smePressure.readTemperature();
+    pressure = smePressure.readPressure();
 #else
     // Reading temperature and humidity takes about 250 milliseconds!
     // Sensor readings may also be up to 2 seconds 'old' (it's a very slow sensor)
@@ -85,7 +94,8 @@ void read_sensor() {
 #ifdef MOONBASE_BOARD
     dtostrf(pressure, 1, 2, str_pressure);
     Serial.print("Pressure: ");
-    Serial.print(str_Pressure);
+    Serial.print(str_pressure);
+    Serial.print(" mBAR\t");
 #endif
     Serial.print("Humidity: ");
     Serial.print(str_humidity);
