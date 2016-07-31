@@ -12,12 +12,12 @@ network-selector.h: firsthalf.h secondhalf.h
 firsthalf.h: network-selector.html
 	echo "constexpr const char network_selector_first[] = {" > $@
 	${AWK} '/${REPLACEMENT_STRING}/{exit};1' $< | ${XXD} -i >> $@
-	echo "};" >> $@
+	echo "  , 0x00};" >> $@
 
 secondhalf.h: network-selector.html
 	echo "constexpr const char network_selector_second[] = {" > $@
 	${AWK} '/${REPLACEMENT_STRING}/{x=1;next};x' $< | ${XXD} -i >> $@
-	echo "};" >> $@
+	echo "  , 0x00};" >> $@
 
 clean:
 	rm -f network-selector.h firsthalf.h secondhalf.h
