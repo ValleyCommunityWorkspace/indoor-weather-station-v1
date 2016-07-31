@@ -1,5 +1,7 @@
 #include "CaptiveConfig.h"
 
+#include "network-selector.h"
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
@@ -163,8 +165,8 @@ void CaptiveConfig::populateKnownAPs(uint8_t numAPs)
 
         if(isNewSSID) {
             knownAPs[numAPsFound] = new APType{ thisSSID,
-                                                  thisRSSI,
-                                                  WiFi.encryptionType(i) };
+                                                thisRSSI,
+                                                WiFi.encryptionType(i) };
             ++numAPsFound;
         }
     }
@@ -216,32 +218,23 @@ void CaptiveConfig::tearDownKnownAPs()
     assert(instance && instance->configHTTPServer);
 
     // TODO: Javascript reloady thing in case we've rescanned, also condition the network list on the scanning state?
-    String out(
-        "<!doctype html>"
-        "<html class=\"no-js\" lang=\"en\">"
-        "<body>"
-        "<table><tr><th>SSID</th><th>RSSI</th><th>Encryption Enum</th></tr>"
-        );
-
-    String footer(
-        "</table></body></html>"
-        );
+    String out(network_selector_first);
 
     for(auto i(0); i < instance->numAPsFound; ++i) {
-        out += "<tr><td>";
+        out += "{\nssid: \"";
         out += instance->knownAPs[i]->ssid;
-        out += "</td><td>";
+        out += "\",\nrssi: ";
         out += instance->knownAPs[i]->rssi;
-        out += "</td><td>";
-        out += instance->knownAPs[i]->encryptionType;
-        out += "</td><td>";
-        out += "<form action=\"storePassword\"><input type=\"hidden\" name=\"ssid\" value=\"";
-        out += instance->knownAPs[i]->ssid;
-        out += "\"><input type=\"password\" name=\"pass\"><input type=\"submit\" value=\"Use This one!\">";
-        out += "</td></tr></form>";
-    }
+        out += ",\nencryptionType: \"";
 
-    instance->configHTTPServer->send(200, "text/html", out + footer);
+        //out += instance->knownAPs[i]->encryptionType;
+        out += "WEP";
+
+        out += "\"},\n";
+    }
+    out += network_selector_second;
+
+    instance->configHTTPServer->send(200, "text/html", out);
 }
 
 
