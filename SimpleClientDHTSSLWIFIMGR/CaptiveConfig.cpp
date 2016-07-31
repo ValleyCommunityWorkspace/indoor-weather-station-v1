@@ -1,6 +1,7 @@
 #include "CaptiveConfig.h"
 
-#include "network-selector.h"
+// for network_selector_first and network_selector_second
+#include "static/network-selector.h"
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -215,9 +216,12 @@ void CaptiveConfig::tearDownKnownAPs()
 
 /*static*/ void CaptiveConfig::serveConfigPage()
 {
+    Serial.println("Serving config page");
+
     assert(instance && instance->configHTTPServer);
 
-    // TODO: Javascript reloady thing in case we've rescanned, also condition the network list on the scanning state?
+    // network_selector_first and network_selector_second are generated from
+    // HTML by the Makefile in static/ and turned in to a header file.
     String out(network_selector_first);
 
     for(auto i(0); i < instance->numAPsFound; ++i) {
@@ -227,10 +231,32 @@ void CaptiveConfig::tearDownKnownAPs()
         out += instance->knownAPs[i]->rssi;
         out += ",\nencryptionType: \"";
 
-        //out += instance->knownAPs[i]->encryptionType;
-        out += "WEP";
+        switch( instance->knownAPs[i]->encryptionType ) {
+            case ENC_TYPE_TKIP:
+                out += "TKIP";
+                break;
 
-        out += "\"},\n";
+            case ENC_TYPE_CCMP:
+                out += "CCMP";
+                break;
+
+            case ENC_TYPE_WEP:
+                out += "WEP";
+                break;
+
+            case ENC_TYPE_NONE:
+                break;
+
+            case ENC_TYPE_AUTO:
+                out += "Auto";
+                break;
+
+            default:
+                out += "???";
+                break;
+        }
+
+        out += "\"\n},\n";
     }
     out += network_selector_second;
 
