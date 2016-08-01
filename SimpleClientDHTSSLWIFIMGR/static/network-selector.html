@@ -402,6 +402,11 @@ function loadData(knownAPs) {
     container.removeChild(container.firstChild);
   }
   
+  if(!knownAPs) {
+      console.log("loadData with knownAPs empty");
+      return;
+  }
+
   knownAPs.sort(function(a,b) { 
     return b.rssi - a.rssi
   }).map(function(x) {
@@ -430,31 +435,28 @@ function loadData(knownAPs) {
 </script>
 <script>
 
+// Fetches JSON object from the server
 // Array of APs
 // ssid: String
 // rssi: Number, integer 0-3 incl.
 // encryptionType: String, "" | *
-var knownAPs = [
-THINGYTHINGS
-];
-
 function refreshData() {
-  loadData(
-    knownAPs.filter(function(x) {
-      return Math.random() > .5
-    }).map(function(x) {
-      return Object.assign({}, x, { rssi: (Math.random()*3) || 0 })
-    })
-  );
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "http://192.168.1.1/getAPs", true);
+    xhr.responseType = "json";
+    xhr.onload = function() {
+      if (xhr.status == 200) {
+        loadData(xhr.response);
+      } else {
+        console.log("Got bad response in JSON request");
+      }
+    };
+    xhr.send();
 }
 
 refreshData();
 
-if (false) 
-  setInterval(
-    refreshData,
-    3000
-  );
+setInterval( refreshData, 5000 );
 
 </script>
 

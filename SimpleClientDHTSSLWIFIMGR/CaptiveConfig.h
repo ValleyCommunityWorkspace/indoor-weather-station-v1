@@ -97,6 +97,12 @@ class CaptiveConfig
         /// Tears down the structure of known APs
         void tearDownKnownAPs();
 
+        /// Returns JSON object with the SSIDs known to the weather station
+        String makeApJson() const;
+
+        /// Serves a JSON object from makeApJson()
+        static void serveApJson();
+
         /// Handles the password entered in to the configuration page
         static void storePassword();
         

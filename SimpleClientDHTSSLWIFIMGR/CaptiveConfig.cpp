@@ -94,6 +94,7 @@ bool CaptiveConfig::haveConfig()
 
         case CaptiveConfigState::STARTING_HTTP:
             configHTTPServer = new ESP8266WebServer(80);
+            configHTTPServer->on("/getAPs", serveApJson);
             configHTTPServer->on("/storePassword", storePassword);
             configHTTPServer->on("/", serveConfigPage);
             configHTTPServer->onNotFound(serveRedirect);
@@ -192,6 +193,62 @@ void CaptiveConfig::tearDownKnownAPs()
 }
 
 
+String CaptiveConfig::makeApJson() const
+{
+    String out("[");
+
+    for(auto i(0); i < numAPsFound; ++i) {
+        if(i) {
+            out += ",";
+        }
+        out += "{\n\"ssid\": \"";
+        out += knownAPs[i]->ssid;
+        out += "\",\n\"rssi\": ";
+        out += knownAPs[i]->rssi;
+        out += ",\n\"encryptionType\": \"";
+
+        switch( knownAPs[i]->encryptionType ) {
+            case ENC_TYPE_TKIP:
+                out += "TKIP";
+                break;
+
+            case ENC_TYPE_CCMP:
+                out += "CCMP";
+                break;
+
+            case ENC_TYPE_WEP:
+                out += "WEP";
+                break;
+
+            case ENC_TYPE_NONE:
+                break;
+
+            case ENC_TYPE_AUTO:
+                out += "Auto";
+                break;
+
+            default:
+                Serial.print("Got unknown enum for encryptionType: ");
+                Serial.println(knownAPs[i]->encryptionType);
+                out += "???";
+                break;
+        }
+        out += "\"\n}\n";
+    }
+    out += "]";
+
+    return out;
+}
+
+
+/*static*/ void CaptiveConfig::serveApJson()
+{
+    Serial.println("Serving JSON");
+    instance->configHTTPServer->send( 200, "application/json",
+                                      instance->makeApJson() );
+}
+
+
 /*static*/ void CaptiveConfig::storePassword()
 {
     assert(instance && instance->configHTTPServer);
@@ -220,45 +277,9 @@ void CaptiveConfig::tearDownKnownAPs()
 
     assert(instance && instance->configHTTPServer);
 
-    // network_selector_first and network_selector_second are generated from
-    // HTML by the Makefile in static/ and turned in to a header file.
-    String out(network_selector_first);
-
-    for(auto i(0); i < instance->numAPsFound; ++i) {
-        out += "{\nssid: \"";
-        out += instance->knownAPs[i]->ssid;
-        out += "\",\nrssi: ";
-        out += instance->knownAPs[i]->rssi;
-        out += ",\nencryptionType: \"";
-
-        switch( instance->knownAPs[i]->encryptionType ) {
-            case ENC_TYPE_TKIP:
-                out += "TKIP";
-                break;
-
-            case ENC_TYPE_CCMP:
-                out += "CCMP";
-                break;
-
-            case ENC_TYPE_WEP:
-                out += "WEP";
-                break;
-
-            case ENC_TYPE_NONE:
-                break;
-
-            case ENC_TYPE_AUTO:
-                out += "Auto";
-                break;
-
-            default:
-                out += "???";
-                break;
-        }
-
-        out += "\"\n},\n";
-    }
-    out += network_selector_second;
+    // network_selector is generated from HTML by the Makefile
+    // in static/ and turned in to a header file.
+    String out(network_selector);
 
     instance->configHTTPServer->send(200, "text/html", out);
 }
