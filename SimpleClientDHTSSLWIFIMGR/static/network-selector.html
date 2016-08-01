@@ -415,9 +415,9 @@ function loadData(knownAPs) {
     rootElement.querySelector('.access-point-ssid').textContent = x.ssid;
     rootElement.querySelector('.access-point-encryption').classList.toggle('icon-lock', x.encryptionType.length)
     var indicators = rootElement.querySelectorAll('.access-point-rssi-indicator');
-    indicators[2].classList.toggle('enabled', x.rssi >= 1);
-    indicators[1].classList.toggle('enabled', x.rssi >= 2);
-    indicators[0].classList.toggle('enabled', x.rssi >= 3);
+    indicators[2].classList.toggle('enabled', x.rssi > -80);
+    indicators[1].classList.toggle('enabled', x.rssi > -65);
+    indicators[0].classList.toggle('enabled', x.rssi > -50);
     
     rootElement.dataset['ssid'] = x.ssid;
     
@@ -438,7 +438,7 @@ function loadData(knownAPs) {
 // Fetches JSON object from the server
 // Array of APs
 // ssid: String
-// rssi: Number, integer 0-3 incl.
+// rssi: Number, integer -something to 0
 // encryptionType: String, "" | *
 function refreshData() {
     var xhr = new XMLHttpRequest();
