@@ -1,4 +1,4 @@
-//#define MOONBASE_BOARD
+#define MOONBASE_BOARD
 /* WeMos DHT Server
  *
  * Connect to WiFi and respond to http requests with temperature and humidity
@@ -18,6 +18,7 @@
 #include <Wire.h>
 #include <HTS221.h>
 #include <LPS25H.h>
+#include "PC8563.h"
 
 #else
 #include <DHT.h>
@@ -29,18 +30,13 @@
 //const char* DEVNAME = "VCW100” ; const char* ISSUEID  = ZGKL01“”; const char* ssid = ""; const char* password = “”;
 extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
 
-void httpsRequest(float temp, float humid
-#ifdef MOONBASE_BOARD
-, float pressure
-#endif
-);
+void httpsRequest(float temp, float humid, float pressure);
 
 IPAddress server(120,138,27,109);
 
-#ifdef MOONBASE_BOARD
-float pressure;         // Raw float values from the sensor
-char str_pressure[10];  // Rounded sensor values and as strings
-#else
+bool humidityPresent, pressurePresent;
+
+#ifndef MOONBASE_BOARD
 // Initialize DHT sensor
 // Note that older versions of this library took an optional third parameter to
 // tweak the timings for faster processors.  This parameter is no longer needed
@@ -48,6 +44,8 @@ char str_pressure[10];  // Rounded sensor values and as strings
 DHT dht(DHTPIN, DHTTYPE);
 #endif
 
+float pressure;         // Raw float values from the sensor
+char str_pressure[10];  // Rounded sensor values and as strings
 float humidity, temperature;                 // Raw float values from the sensor
 char str_humidity[10], str_temperature[10];  // Rounded sensor values and as strings
 
@@ -58,6 +56,7 @@ unsigned long lastConnectionTime = 0;             // last time you connected to 
 enum WiFiStateEnum { DOWN, STARTING, UP }    ;
 WiFiStateEnum WiFiState = DOWN;
 unsigned long WiFiStartTime = 0;
+int secs_waiting=0;
 
 void read_sensor() {
   // Wait at least 2 seconds seconds between measurements.
@@ -71,38 +70,60 @@ void read_sensor() {
     previousMillis = currentMillis;
 
 #ifdef MOONBASE_BOARD
-    humidity = smeHumidity.readHumidity();
-    temperature = smeHumidity.readTemperature();
-    pressure = smePressure.readPressure();
+    pc_time tm;
+    if (!PC8563_RTC.read(tm)) {
+      Serial.println("Failed to read from RTC!");
+    } else {
+      Serial.print("Time: ");
+      Serial.print(tm.hour);
+      Serial.print(":");
+      Serial.print(tm.minute);
+      Serial.print(":");
+      Serial.print(tm.second);
+      Serial.print(" ");
+      Serial.print(tm.day);
+      Serial.print("/");
+      Serial.print(tm.month);
+      Serial.print("/");
+      Serial.println(tm.year);
+    }
+    if (humidityPresent) {
+      humidity = smeHumidity.readHumidity();
+      temperature = smeHumidity.readTemperature();
+    }
+    if (pressurePresent)
+      pressure = smePressure.readPressure();
 #else
     // Reading temperature and humidity takes about 250 milliseconds!
     // Sensor readings may also be up to 2 seconds 'old' (it's a very slow sensor)
     humidity = dht.readHumidity();        // Read humidity as a percent
     temperature = dht.readTemperature();  // Read temperature as Celsius
-#endif
 
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temperature)) {
       Serial.println("Failed to read from sensors!");
       return;
     }
+#endif
 
     // Convert the floats to strings and round to 2 decimal places
-    dtostrf(humidity, 1, 2, str_humidity);
-    dtostrf(temperature, 1, 2, str_temperature);
 
-#ifdef MOONBASE_BOARD
-    dtostrf(pressure, 1, 2, str_pressure);
-    Serial.print("Pressure: ");
-    Serial.print(str_pressure);
-    Serial.print(" mBAR\t");
-#endif
-    Serial.print("Humidity: ");
-    Serial.print(str_humidity);
-    Serial.print(" %\t");
-    Serial.print("Temperature: ");
-    Serial.print(str_temperature);
-    Serial.println(" °C");
+    if (pressurePresent) {
+      dtostrf(pressure, 1, 2, str_pressure);
+      Serial.print("Pressure: ");
+      Serial.print(str_pressure);
+      Serial.print(" mBAR\t");
+    }
+    if (humidityPresent) {
+      dtostrf(humidity, 1, 2, str_humidity);
+      dtostrf(temperature, 1, 2, str_temperature);
+      Serial.print("Humidity: ");
+      Serial.print(str_humidity);
+      Serial.print(" %\t");
+      Serial.print("Temperature: ");
+      Serial.print(str_temperature);
+      Serial.println(" °C");
+    }
   }
 }
 
@@ -140,18 +161,36 @@ void WifiTryUp() {
 
 }
 
-
 unsigned long _ESP_id;
 void setup(void)
 {
   // Open the Arduino IDE Serial Monitor to see what the code is doing
   Serial.begin(115200);
+  Serial.println("");
 #ifdef MOONBASE_BOARD
-    Wire.begin();
-    smePressure.begin();
-    smeHumidity.begin();
     Serial.println("VCW sensor Server");
+    Wire.begin();
+    pressurePresent= smePressure.begin();
+    if (!pressurePresent)
+        Serial.println("- NO LPS25 Pressure Sensor found");
+    humidityPresent = smeHumidity.begin();
+    if (!humidityPresent)
+        Serial.println("- NO HT221 Temperature/Humidity Sensor found");
+    if (!PC8563_RTC.begin())
+      Serial.println("- NO PC8563 RTC found");
+    pc_time tm;
+    tm.year=2016;
+    tm.month=8;
+    tm.day=12;
+    tm.hour=21;
+    tm.minute=12;
+    tm.second=30;
+    PC8563_RTC.write(tm);
+    
+
 #else
+  humidityPresent = 1;
+  pressurePresent = 0;
   dht.begin();
   Serial.println("WeMos DHT Server");
 #endif
@@ -159,25 +198,24 @@ void setup(void)
   _ESP_id = ESP.getChipId();  // uint32 -> unsigned long on arduino
   Serial.println(_ESP_id,HEX);
   Serial.println("");
-
   WiFi.onEvent(WiFiEvent);
-
   // Initial read
   read_sensor();
-
+  secs_waiting = 0;
 }
 
 void loop(void)
 {
-  delay(60000);
+  if (secs_waiting < 59) {
+    delay(1000);
+    secs_waiting++;
+    return;
+  }
+  secs_waiting=0;
   read_sensor();
   
   if (WiFiState == UP) 
-#ifdef MOONBASE_BOARD
   	{ httpsRequest(temperature,humidity, pressure); }
-#else
-  	{ httpsRequest(temperature,humidity); }
-#endif
 
   // Connect to your WiFi network
   if (WiFiState == DOWN) {
@@ -196,11 +234,7 @@ void loop(void)
 
 
 // this method makes a HTTP connection to the server:
-void httpRequest(float temp, float humid
-#ifdef MOONBASE_BOARD
-, float pressure
-#endif
-) {
+void httpRequest(float temp, float humid, float pressure) {
 
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
@@ -217,16 +251,17 @@ void httpRequest(float temp, float humid
   url += DEVNAME;
   url += "&issueid=";
   url += ISSUEID;
-  url += "&dateutc=now&indoortemp=";
-  url += temp;
-  url += "&indoorhumidity=";
-  url += humid;
-#ifdef MOONBASE_BOARD
-  url += "&indoorpressure=";
-  url += pressure;
-#endif
- 
-  
+  url += "&dateutc=now";
+  if (humidityPresent) {
+    url += "&indoortemp=";
+    url += temp;
+    url += "&indoorhumidity=";
+    url += humid;
+  }
+  if (pressurePresent) {
+    url += "&indoorpressure=";
+    url += pressure;
+  }
   Serial.print("Requesting URL: ");
   Serial.println(url);
   
@@ -265,11 +300,7 @@ void httpRequest(float temp, float humid
 const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50 DD 5C";
 
 // this method makes a HTTP connection to the server:
-void httpsRequest(float temp, float humid
-#ifdef MOONBASE_BOARD
-, float pressure
-#endif
-) {
+void httpsRequest(float temp, float humid, float pressure) {
 
   // Use WiFiClientSecure class to create TLS connection
   WiFiClientSecure client;
@@ -294,17 +325,17 @@ void httpsRequest(float temp, float humid
   url += DEVNAME;
   url += "&issueid=";
   url += ISSUEID;
-  url += "&dateutc=now&indoortemp=";
-  url += temp;
-  url += "&indoorhumidity=";
-  url += humid;
-#ifdef MOONBASE_BOARD
-  url += "&indoorpressure=";
-  url += pressure;
-#endif
- 
- 
-  
+  url += "&dateutc=now";
+  if (humidityPresent) {
+    url += "&indoortemp=";
+    url += temp;
+    url += "&indoorhumidity=";
+    url += humid;
+  } 
+  if (pressurePresent) {
+    url += "&indoorpressure=";
+    url += pressure;
+  }
   Serial.print("Requesting URL: ");
   Serial.println(url);
   
