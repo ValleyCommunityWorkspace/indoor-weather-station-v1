@@ -1,3 +1,4 @@
+
 #define MOONBASE_BOARD
 /* WeMos DHT Server
  *
@@ -27,8 +28,11 @@
 #endif
 
 
-//const char* DEVNAME = "VCW100” ; const char* ISSUEID  = ZGKL01“”; const char* ssid = ""; const char* password = “”;
-extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
+const char* DEVNAME = "VCW100";
+const char* ISSUEID  = "ZGKL01";
+const char* ssid = "";
+const char* password = "";
+//extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
 
 void httpsRequest(float temp, float humid, float pressure);
 
