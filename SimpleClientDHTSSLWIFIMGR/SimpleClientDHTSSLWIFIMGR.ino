@@ -1,45 +1,32 @@
-/* ESP8266-based weather server
- *
- * Connect to WiFi and makes https requests with temperature and humidity
- *
- * Originally ased on Adafruit ESP8266 Temperature / Humidity Webserver
- * https://learn.adafruit.com/esp8266-temperature-slash-humidity-webserver
- */
 
-#define MOONBASE_BOARD true
+/* WeMos DHT Server
+ *
+ * Connect to WiFi and respond to http requests with temperature and humidity
+ *
+ * Based on Adafruit ESP8266 Temperature / Humidity Webserver
+ * https://learn.adafruit.com/esp8266-temperature-slash-humidity-webserver
+ *
+ * Depends on Adafruit DHT Arduino library
+ * https://github.com/adafruit/DHT-sensor-library
+ */
 
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
+#include <DHT.h>
+
+//WiFiManager
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
 #include <WiFiManager.h> 
 #include <Ticker.h>
-
-#include "CaptiveConfig.h"
-
-#if MOONBASE_BOARD
-  #include <Wire.h>
-
-  // SmartEverything HTS221 and LPS25H libraries.  To add via Arduino IDE:
-  // Sketch->Include Library->Manage Libraries->filter "SmartEverything"
-  // https://github.com/ameltech 
-  #include <HTS221.h>
-  #include <LPS25H.h>
-
-#else
-
-  // Adafruit DHT Arduino library
-  // https://github.com/adafruit/DHT-sensor-library
-  #include <DHT.h>
-  #define DHTTYPE DHT22   // DHT Shield uses DHT 11
-  #define DHTPIN D4       // DHT Shield uses pin D4
-#endif // if/else MOONBASE_BOARD
-
 Ticker ticker;
 
-//TODO: What are these for?
-const char* DEVNAME = "";
-const char* ISSUEID  = "";
-const char* ssid = "";
-const char* password = "";
+
+#define DHTTYPE DHT22   // DHT Shield uses DHT 11
+#define DHTPIN D4       // DHT Shield uses pin D4
+
+const char* DEVNAME = ""; const char* ISSUEID  = ""; const char* ssid = ""; const char* password = ""; //
+
 
 void tick()
 {
@@ -59,21 +46,16 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 }
 
 
-/// IP address of the server we send data to via HTTP(S) requests.
+
+
+
 IPAddress server(120,138,27,109);
 
-#if MOONBASE_BOARD
-  /// Raw float values from the sensor
-  float pressure;
-  /// Rounded sensor value as string
-  char str_pressure[10];
-#else
-  // Initialize DHT sensor
-  // Note that older versions of this library took an optional third parameter to
-  // tweak the timings for faster processors.  This parameter is no longer needed
-  // as the current DHT reading algorithm adjusts itself to work on faster procs.
-  DHT dht(DHTPIN, DHTTYPE);
-#endif // if/else MOONBASE_BOARD
+// Initialize DHT sensor
+// Note that older versions of this library took an optional third parameter to
+// tweak the timings for faster processors.  This parameter is no longer needed
+// as the current DHT reading algorithm adjusts itself to work on faster procs.
+DHT dht(DHTPIN, DHTTYPE);
 
 float humidity, temperature;                 // Raw float values from the sensor
 char str_humidity[10], str_temperature[10];  // Rounded sensor values and as strings
@@ -82,7 +64,7 @@ char str_humidity[10], str_temperature[10];  // Rounded sensor values and as str
 unsigned long previousMillis = 0;            // When the sensor was last read
 const long interval = 5000;                  // Wait this long until reading again
 unsigned long lastConnectionTime = 0;             // last time you connected to the server, in milliseconds
-enum WiFiStateEnum { DOWN, STARTING, UP };
+enum WiFiStateEnum { DOWN, STARTING, UP }    ;
 WiFiStateEnum WiFiState = DOWN;
 unsigned long WiFiStartTime = 0;
 
@@ -97,32 +79,20 @@ void read_sensor() {
     // Save the last time you read the sensor
     previousMillis = currentMillis;
 
-    #if MOONBASE_BOARD
-      humidity = smeHumidity.readHumidity();
-      temperature = smeHumidity.readTemperature();
-      pressure = smePressure.readTemperature();
-    #else
-      // Reading temperature and humidity takes about 250 milliseconds!
-      // Sensor readings may also be up to 2 seconds 'old' (it's a very slow sensor)
-      humidity = dht.readHumidity();        // Read humidity as a percent
-      temperature = dht.readTemperature();  // Read temperature as Celsius
-    #endif // if/else MOONBASE_BOARD
+    // Reading temperature and humidity takes about 250 milliseconds!
+    // Sensor readings may also be up to 2 seconds 'old' (it's a very slow sensor)
+    humidity = dht.readHumidity();        // Read humidity as a percent
+    temperature = dht.readTemperature();  // Read temperature as Celsius
 
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temperature)) {
-      Serial.println("Failed to read from sensors!");
+      Serial.println("Failed to read from DHT sensor!");
       return;
     }
 
     // Convert the floats to strings and round to 2 decimal places
     dtostrf(humidity, 1, 2, str_humidity);
     dtostrf(temperature, 1, 2, str_temperature);
-
-    #if MOONBASE_BOARD
-       dtostrf(pressure, 1, 2, str_pressure);
-       Serial.print("Pressure: ");
-       Serial.print(str_pressure);
-    #endif // #if MOONBASE_BOARD
 
     Serial.print("Humidity: ");
     Serial.print(str_humidity);
@@ -133,26 +103,8 @@ void read_sensor() {
   }
 }
 
-
-const char * WiFiEvent_t_strings[] = {
-    "WIFI_EVENT_STAMODE_CONNECTED",
-    "WIFI_EVENT_STAMODE_DISCONNECTED",
-    "WIFI_EVENT_STAMODE_AUTHMODE_CHANGE",
-    "WIFI_EVENT_STAMODE_GOT_IP",
-    "WIFI_EVENT_STAMODE_DHCP_TIMEOUT",
-    "WIFI_EVENT_SOFTAPMODE_STACONNECTED",
-    "WIFI_EVENT_SOFTAPMODE_STADISCONNECTED",
-    "WIFI_EVENT_SOFTAPMODE_PROBEREQRECVED",
-    "WIFI_EVENT_MAX / WIFI_EVENT_ANY",
-    "WIFI_EVENT_MODE_CHANGE" // IR: May be problematic to have this > WIFI_EVENT_MAX?
-};
-
 void WiFiEvent(WiFiEvent_t event) {
-    if (event <= WIFI_EVENT_MODE_CHANGE) {
-        Serial.printf("[WiFi-event] event: %d (%s)\n", event, WiFiEvent_t_strings[event]);
-    } else {
-        Serial.printf("[WiFi-event] event has invalid value\n");
-    }
+    Serial.printf("[WiFi-event] event: %d\n", event);
 
     switch(event) {
         case WIFI_EVENT_STAMODE_GOT_IP:
@@ -175,102 +127,59 @@ void WifiTryUp() {
 
     delay(1000);
 
+
+
     WiFi.begin(ssid, password);
 
     Serial.println();
     Serial.println();
     Serial.println("Wait for WiFi... ");
+
 }
 
 
 unsigned long _ESP_id;
-
-/// Points to instance of captive configuration manager, when there is one
-CaptiveConfig *captiveConfig(nullptr);
-
 void setup(void)
 {
   // Open the Arduino IDE Serial Monitor to see what the code is doing
   Serial.begin(115200);
+  dht.begin();
 
-  #if MOONBASE_BOARD
-    Wire.begin();
-    smePressure.begin();
-    smeHumidity.begin();
-    Serial.println("VCW sensor Server");
-  #else
-    dht.begin();
-
-    Serial.println("WeMos DHT Server");
-  #endif // if/else MOONBASE_BOARD
-
+  Serial.println("WeMos DHT Server");
   _ESP_id = ESP.getChipId();  // uint32 -> unsigned long on arduino
-  Serial.println(_ESP_id, HEX);
+  Serial.println(_ESP_id,HEX);
   Serial.println("");
+
+  WiFi.onEvent(WiFiEvent);
 
   // Initial read
   read_sensor();
 
-  // Instantiate CaptiveConfig
-  captiveConfig = new CaptiveConfig;
 }
-
-const char * wlStatusTToCString(wl_status_t in)
-{
-  if (in == 255) {
-    return "No Shield";
-  }
-
-  const char * statuses[] = {
-    "Idle",
-    "No SSID Available",
-    "Scan Completed",
-    "Connected",
-    "Connect Failed",
-    "Connection Lost",
-    "Disconnected" };
-
-  if (in > 6)
-    return "ERROR: Bad enum value!";
-
-  return statuses[in];
-}
-
 
 void loop(void)
 {
-  static auto lastStatus(WL_NO_SHIELD);
+  delay(1000);
+  read_sensor();
+  
+  if (WiFiState == UP) { httpsRequest(temperature,humidity); }
 
-  if( captiveConfig && captiveConfig->haveConfig() ) {
-
-    APCredentials requestedNetwork( captiveConfig->getConfig() );
-
-    Serial.print("User wants to connect with SSID:\n\t\"");
-    Serial.print(requestedNetwork.ssid);
-    Serial.print("\"\nwith passphrase:\n\t\"");
-    Serial.print(requestedNetwork.passphrase);
-    Serial.print("\"\n");
-
-    delete captiveConfig;
-    captiveConfig = nullptr;
-
-    WiFi.mode(WIFI_STA);
-    WiFi.begin( requestedNetwork.ssid.c_str(),
-                requestedNetwork.passphrase.c_str() );
-  } else {
-    auto thisStatus(WiFi.status());
-
-    if (thisStatus != lastStatus) {
-      Serial.print("Status changed to ");
-      Serial.print(wlStatusTToCString(thisStatus));
-      Serial.print("\n");
-      lastStatus = thisStatus;
-    }
+  // Connect to your WiFi network
+  if (WiFiState == DOWN) {
+    WifiTryUp();
+    WiFiState = STARTING;
+    WiFiStartTime = millis();
   }
+  if (WiFiState == STARTING) {
+    if (millis() - WiFiStartTime > 30000) { WiFiState = DOWN; Serial.println("WiFi Connect Timeout"); }
+  }
+
+
 }
 
 
-#if 0 // IR: Doesn't look like this is currently used
+
+
 // this method makes a HTTP connection to the server:
 void httpRequest(float temp, float humid) {
 
@@ -325,7 +234,6 @@ void httpRequest(float temp, float humid) {
   lastConnectionTime = millis();
  
 }
-#endif // #if 0
 
 
 
@@ -334,11 +242,8 @@ void httpRequest(float temp, float humid) {
 const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50 DD 5C";
 
 // this method makes a HTTP connection to the server:
-#if MOONBASE_BOARD
-  void httpsRequest(float temp, float humid, float pressure) {
-#else
-  void httpsRequest(float temp, float humid) {
-#endif // if/else MOONBASE_BOARD
+void httpsRequest(float temp, float humid) {
+
   // Use WiFiClientSecure class to create TLS connection
   WiFiClientSecure client;
   Serial.print("connecting HTTPS ");
@@ -366,10 +271,6 @@ const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50
   url += temp;
   url += "&indoorhumidity=";
   url += humid;
-  #if MOONBASE_BOARD
-    url += "&indoorpressure=";
-    url += pressure;
-  #endif // #if MOONBASE_BOARD
  
  
   
@@ -446,5 +347,5 @@ const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50
   //Serial.println("closing connection");
 
 
-} // end httpsRequest()
+}
 
