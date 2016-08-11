@@ -13,7 +13,7 @@
 
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
-
+#include "CaptiveConfig.h"
 
 #ifdef MOONBASE_BOARD
 #include <Wire.h>
@@ -208,8 +208,32 @@ void setup(void)
   secs_waiting = 0;
 }
 
+
 void loop(void)
 {
+    //TODO: Just for testing
+    static CaptiveConfig *captiveConfig(nullptr);
+    static auto haveConfig(false);
+    if (!haveConfig) {
+        if (captiveConfig == nullptr) {
+            captiveConfig = new CaptiveConfig;
+        }
+        if (captiveConfig->haveConfig()) {
+
+            // TODO: Store the config somewhere useful
+            auto desiredConfig(captiveConfig->getConfig());
+            Serial.print("Got configuration!  SSID: ");
+            Serial.print(desiredConfig.ssid);
+            Serial.print(" passphrase: ");
+            Serial.println(desiredConfig.passphrase);
+
+            haveConfig = true;
+            delete captiveConfig;
+            captiveConfig = nullptr;
+        }
+    }
+    return;
+
   if (secs_waiting < 59) {
     delay(1000);
     secs_waiting++;
