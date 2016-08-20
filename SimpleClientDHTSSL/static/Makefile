@@ -1,11 +1,12 @@
-# Haven't considered any sort of minifying or compression.
+# Haven't considered any sort of minifying yet.
 
 XXD=/usr/bin/XXD
+GZIP=/usr/bin/gzip
+SED=/usr/bin/sed
 
 network-selector.h: network-selector.html
-	echo "constexpr const char network_selector[] = {" > $@
-	${XXD} -i < $< >> $@
-	echo "  , 0x00};" >> $@
+	${GZIP} < $< > network-selector.html.gz
+	${XXD} -i network-selector.html.gz | ${SED} 's/unsigned/constexpr/' > $@
 
 clean:
-	rm -f network-selector.h
+	rm -f network-selector.h network-selector.html.gz

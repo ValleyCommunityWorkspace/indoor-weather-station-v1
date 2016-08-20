@@ -49,13 +49,9 @@ bool CaptiveConfig::haveConfig()
 {
     switch (state) {
         case CaptiveConfigState::START_SCANNING:
-            // Set WiFi to station mode and disconnect from an AP, in case
-            // it was previously connected.
-            // TODO: This seems to be covered in scanNetworks - double check in the rescanning case
-            WiFi.mode(WIFI_STA);
-            WiFi.disconnect();
-
             // Scan asynchronously, don't show hidden networks.
+            // This puts WiFi in station mode and disconnects if required.
+            // Takes roughly 120ms, mainly in switching to station mode.
             WiFi.scanNetworks(true, false);
 
             state = CaptiveConfigState::SCANNING;
@@ -72,14 +68,16 @@ bool CaptiveConfig::haveConfig()
                 return false;
             }
 
-            populateKnownAPs(scanState);
+            populateKnownAPs(scanState);    // <1ms with a couple APs visible
 
             state = CaptiveConfigState::STARTING_WIFI;
             return false;
         }
 
         case CaptiveConfigState::STARTING_WIFI:
-            WiFi.mode(WIFI_AP);
+            WiFi.mode(WIFI_AP);  // ~95ms
+
+            // These two take ~500us
             WiFi.softAPConfig( captiveServeIP, captiveServeIP,
                                IPAddress(255, 255, 255, 0) );
             WiFi.softAP(APNAME);
@@ -93,6 +91,7 @@ bool CaptiveConfig::haveConfig()
             return false;
 
         case CaptiveConfigState::STARTING_HTTP:
+            // This state takes about 500us
             configHTTPServer = new ESP8266WebServer(80);
             configHTTPServer->on("/getAPs", serveApJson);
             configHTTPServer->on("/storePassword", storePassword);
@@ -104,6 +103,7 @@ bool CaptiveConfig::haveConfig()
             return false;
 
         case CaptiveConfigState::STARTING_DNS:
+            // This state takes about 200us
             configDNSServer = new DNSServer;
             configDNSServer->setTTL(0);
             configDNSServer->start(53, "*", captiveServeIP);
@@ -112,8 +112,8 @@ bool CaptiveConfig::haveConfig()
             return false;
 
         case CaptiveConfigState::SERVING:
-            configDNSServer->processNextRequest();
-            configHTTPServer->handleClient();
+            configDNSServer->processNextRequest();  // <500us
+            configHTTPServer->handleClient();  // Depends on served page
 
             // storePassword() advances state to DONE
             return false;
@@ -243,6 +243,7 @@ String CaptiveConfig::makeApJson() const
 
 /*static*/ void CaptiveConfig::serveApJson()
 {
+    // Time varies a bit - about 10ms max at home
     Serial.println("Serving JSON");
     instance->configHTTPServer->send( 200, "application/json",
                                       instance->makeApJson() );
@@ -273,15 +274,18 @@ String CaptiveConfig::makeApJson() const
 
 /*static*/ void CaptiveConfig::serveConfigPage()
 {
+    // Takes on the order of 50ms with non-minified, gzipped, config page
     Serial.println("Serving config page");
 
     assert(instance && instance->configHTTPServer);
 
     // network_selector is generated from HTML by the Makefile
     // in static/ and turned in to a header file.
-    String out(network_selector);
-
-    instance->configHTTPServer->send(200, "text/html", out);
+    instance->configHTTPServer->sendHeader("Content-Encoding", "gzip");
+    instance->configHTTPServer->send_P( 200,
+                                        "text/html",
+                                        network_selector_html_gz,
+                                        network_selector_html_gz_len );
 }
 
 
