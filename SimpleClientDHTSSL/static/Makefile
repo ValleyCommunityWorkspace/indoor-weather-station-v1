@@ -1,6 +1,6 @@
 # Haven't considered any sort of minifying yet.
 
-XXD=/usr/bin/XXD
+XXD=/usr/bin/xxd
 GZIP=/usr/bin/gzip
 SED=/usr/bin/sed
 

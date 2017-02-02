@@ -1,5 +1,5 @@
 
-#define MOONBASE_BOARD
+#undef MOONBASE_BOARD
 /* WeMos DHT Server
  *
  * Connect to WiFi and respond to http requests with temperature and humidity
@@ -19,7 +19,7 @@
 #include <Wire.h>
 #include <HTS221.h>
 #include <LPS25H.h>
-#include "PC8563.h"
+#include "PC8563.h" 
 
 #else
 #include <DHT.h>
@@ -28,17 +28,11 @@
 #endif
 
 
-const char* DEVNAME = "VCW100";
-const char* ISSUEID  = "ZGKL01";
-const char* ssid = "";
-const char* password = "";
 //extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
 
-void httpsRequest(float temp, float humid, float pressure);
-
 IPAddress server(120,138,27,109);
-
 bool humidityPresent, pressurePresent;
+
 
 #ifndef MOONBASE_BOARD
 // Initialize DHT sensor
@@ -61,6 +55,11 @@ enum WiFiStateEnum { DOWN, STARTING, UP }    ;
 WiFiStateEnum WiFiState = DOWN;
 unsigned long WiFiStartTime = 0;
 int secs_waiting=0;
+
+char saved_ssid[255] = "BADSSID";        /// replaced by user in ConfigAP
+char saved_password[255] = "BADPASSWD";  /// replaced by user in ConfigAP
+char DEVNAME[255] = "VCW100";
+char ISSUEID[255]  = "ZGKL01";
 
 void read_sensor() {
   // Wait at least 2 seconds seconds between measurements.
@@ -103,12 +102,12 @@ void read_sensor() {
     humidity = dht.readHumidity();        // Read humidity as a percent
     temperature = dht.readTemperature();  // Read temperature as Celsius
 
+#endif
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temperature)) {
       Serial.println("Failed to read from sensors!");
       return;
     }
-#endif
 
     // Convert the floats to strings and round to 2 decimal places
 
@@ -148,14 +147,12 @@ void WiFiEvent(WiFiEvent_t event) {
     }
 }
 
-void WifiTryUp() {
+void WifiTryUp(const char* ssid, const char* password) {
     // delete old config
 
     WiFi.disconnect(true);
 
     delay(1000);
-
-
 
     WiFi.begin(ssid, password);
 
@@ -171,6 +168,7 @@ void setup(void)
   // Open the Arduino IDE Serial Monitor to see what the code is doing
   Serial.begin(115200);
   Serial.println("");
+
 #ifdef MOONBASE_BOARD
     Serial.println("VCW sensor Server");
     Wire.begin();
@@ -193,134 +191,83 @@ void setup(void)
     
 
 #else
+
+
   humidityPresent = 1;
   pressurePresent = 0;
   dht.begin();
   Serial.println("WeMos DHT Server");
+
 #endif
 
   _ESP_id = ESP.getChipId();  // uint32 -> unsigned long on arduino
   Serial.println(_ESP_id,HEX);
   Serial.println("");
-  WiFi.onEvent(WiFiEvent);
   // Initial read
-  read_sensor();
+  // read_sensor();
   secs_waiting = 0;
 }
 
 
 void loop(void)
 {
-    //TODO: Just for testing
-    static CaptiveConfig *captiveConfig(nullptr);
-    static auto haveConfig(false);
-    if (!haveConfig) {
-        if (captiveConfig == nullptr) {
-            captiveConfig = new CaptiveConfig;
-        }
-        if (captiveConfig->haveConfig()) {
+  
+    delay(500);  //TODO: Just for testing
+      static CaptiveConfig *captiveConfig(nullptr);
+      static auto haveConfig(false);
+      if (!haveConfig) {
+          if (captiveConfig == nullptr) {
+              captiveConfig = new CaptiveConfig;
+          }
+          Serial.println("haveConfig...");
+          if (captiveConfig->haveConfig()) {
+  
+              // TODO: Store the config somewhere useful
+              auto desiredConfig(captiveConfig->getConfig());
+              Serial.print("Got configuration!  SSID: ");
+              Serial.print(desiredConfig.ssid);
+              Serial.print(" passphrase: ");
+              Serial.println(desiredConfig.passphrase);
 
-            // TODO: Store the config somewhere useful
-            auto desiredConfig(captiveConfig->getConfig());
-            Serial.print("Got configuration!  SSID: ");
-            Serial.print(desiredConfig.ssid);
-            Serial.print(" passphrase: ");
-            Serial.println(desiredConfig.passphrase);
-
-            haveConfig = true;
-            delete captiveConfig;
-            captiveConfig = nullptr;
-        }
-    }
-    return;
+              desiredConfig.ssid.toCharArray(saved_ssid, 254);
+              desiredConfig.passphrase.toCharArray(saved_password,254);
+  
+              haveConfig = true;
+              delete captiveConfig;
+              captiveConfig = nullptr;
+          }
+      }
+    
+    // return;
 
   if (secs_waiting < 59) {
-    delay(1000);
+    delay(500);
     secs_waiting++;
     return;
   }
   secs_waiting=0;
   read_sensor();
+
+  if (haveConfig) {
+    WiFi.onEvent(WiFiEvent);
+    
+      // Connect to your WiFi network
+      if (WiFiState == DOWN) {
+        WifiTryUp(saved_ssid,saved_password);
+        WiFiState = STARTING;
+        WiFiStartTime = millis();
+      }
+      if (WiFiState == STARTING) {
+        if (millis() - WiFiStartTime > 120000) { WiFiState = DOWN; Serial.println("WiFi Connect Timeout"); }
+      }
   
-  if (WiFiState == UP) 
-  	{ httpsRequest(temperature,humidity, pressure); }
-
-  // Connect to your WiFi network
-  if (WiFiState == DOWN) {
-    WifiTryUp();
-    WiFiState = STARTING;
-    WiFiStartTime = millis();
+      if (WiFiState == UP) { 
+        httpsRequest(temperature,humidity, pressure); 
+      }
+  
   }
-  if (WiFiState == STARTING) {
-    if (millis() - WiFiStartTime > 120000) { WiFiState = DOWN; Serial.println("WiFi Connect Timeout"); }
-  }
-
 
 }
-
-
-
-
-// this method makes a HTTP connection to the server:
-void httpRequest(float temp, float humid, float pressure) {
-
-  // Use WiFiClient class to create TCP connections
-  WiFiClient client;
-  const int httpPort = 80;
-  if (!client.connect(server, httpPort)) {
-    Serial.println("connection failed");
-    return;
-  }
-  
-  String url = "/updateweatherstation.php?action=updateraw";
-  url += "&devid=";
-  url += String(_ESP_id,HEX);
-  url += "&devname=";
-  url += DEVNAME;
-  url += "&issueid=";
-  url += ISSUEID;
-  url += "&dateutc=now";
-  if (humidityPresent) {
-    url += "&indoortemp=";
-    url += temp;
-    url += "&indoorhumidity=";
-    url += humid;
-  }
-  if (pressurePresent) {
-    url += "&indoorpressure=";
-    url += pressure;
-  }
-  Serial.print("Requesting URL: ");
-  Serial.println(url);
-  
-  // This will send the request to the server
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + "www.shac.org.nz" + "\r\n" + 
-               "Connection: close\r\n\r\n");
-  unsigned long timeout = millis();
-  while (client.available() == 0) {
-    delay(10);
-    if (millis() - timeout > 5000) {
-      Serial.println(">>> Client Timeout !");
-      client.stop();
-      return;
-    }
-  }
-  
-  // Read all the lines of the reply from server and print them to Serial
-  while(client.available()){
-    String line = client.readStringUntil('\r');
-    Serial.print(line);
-  }
-  
-  Serial.println();
-  Serial.println("closing connection"); 
-
-    // note the time that the connection was made:
-  lastConnectionTime = millis();
- 
-}
-
 
 
 // Use web browser to view and copy
@@ -376,27 +323,6 @@ void httpsRequest(float temp, float humid, float pressure) {
   Serial.println("request sent");
 
   //delay(100);
-
-/*   
-  Serial.print("01"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("02"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("03"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("04"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("05"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("06"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("07"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("08"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("09"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("10"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("11"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("12"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("13"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("14"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("15"); Serial.println(client.readStringUntil('\n'));
-  Serial.print("16"); Serial.println(client.readStringUntil('\n'));
-*/     
-
-
 
   unsigned long _timeout = 1000;
   unsigned long _startMillis = millis();

@@ -406,7 +406,10 @@ function loadData(knownAPs) {
       console.log("loadData with knownAPs empty");
       return;
   }
+  
+  if ( typeof knownAPs.sort == 'function' ) { 
 
+ 
   knownAPs.sort(function(a,b) { 
     return b.rssi - a.rssi
   }).map(function(x) {
@@ -430,6 +433,35 @@ function loadData(knownAPs) {
   }).forEach(function(x) {
     return container.appendChild(x);
   } );
+
+  } else {
+
+    knownAPs.map(function(x) {
+    var rootElement = document.importNode(accessPointTpl.content, true).children[0];
+    
+    rootElement.querySelector('.access-point-ssid').textContent = x.ssid;
+    rootElement.querySelector('.access-point-encryption').classList.toggle('icon-lock', x.encryptionType.length)
+    var indicators = rootElement.querySelectorAll('.access-point-rssi-indicator');
+    indicators[2].classList.toggle('enabled', x.rssi > -80);
+    indicators[1].classList.toggle('enabled', x.rssi > -65);
+    indicators[0].classList.toggle('enabled', x.rssi > -50);
+    
+    rootElement.dataset['ssid'] = x.ssid;
+    
+    if (x.encryptionType.length)
+      rootElement.dataset['encrypted'] = "true";
+    
+    rootElement.addEventListener('click', onClickAP);
+    
+    return rootElement;
+  }).forEach(function(x) {
+    return container.appendChild(x);
+  } );
+
+
+
+  } 
+
   
 }
 </script>

@@ -20,6 +20,7 @@ CaptiveConfig::CaptiveConfig() :
 {
     assert(instance == nullptr);
     instance = this;
+    Serial.println("new CaptiveConfig");
 }
 
 
@@ -42,6 +43,7 @@ CaptiveConfig::~CaptiveConfig()
     tearDownKnownAPs();
 
     instance = nullptr;
+    Serial.println("delete CaptiveConfig");
 }
 
 
@@ -49,32 +51,38 @@ bool CaptiveConfig::haveConfig()
 {
     switch (state) {
         case CaptiveConfigState::START_SCANNING:
+            Serial.print("CaptiveConfigState::START_SCANNING->");
             // Scan asynchronously, don't show hidden networks.
             // This puts WiFi in station mode and disconnects if required.
             // Takes roughly 120ms, mainly in switching to station mode.
             WiFi.scanNetworks(true, false);
 
             state = CaptiveConfigState::SCANNING;
+            Serial.println("CaptiveConfigState::SCANNING");
             return false;
 
         case CaptiveConfigState::SCANNING:
         {
+            Serial.print("CaptiveConfigState::SCANNING->");
             auto scanState(WiFi.scanComplete());
 
             if (scanState == WIFI_SCAN_RUNNING) {
                 return false;
             } else if (scanState == WIFI_SCAN_FAILED) {
                 state = CaptiveConfigState::START_SCANNING;
+                Serial.println("CaptiveConfigState::START_SCANNING");
                 return false;
             }
 
             populateKnownAPs(scanState);    // <1ms with a couple APs visible
 
             state = CaptiveConfigState::STARTING_WIFI;
+            Serial.println("CaptiveConfigState::STARTING_WIFI");
             return false;
         }
 
         case CaptiveConfigState::STARTING_WIFI:
+            Serial.print("CaptiveConfigState::STARTING_WIFI->");
             WiFi.mode(WIFI_AP);  // ~95ms
 
             // These two take ~500us
@@ -85,12 +93,15 @@ bool CaptiveConfig::haveConfig()
             // If this is our first time starting up (ie not a rescan)
             if (configHTTPServer == nullptr) {
                 state = CaptiveConfigState::STARTING_HTTP;
+                Serial.println("CaptiveConfigState::STARTING_HTTP");
             } else {
                 state = CaptiveConfigState::SERVING;
+                Serial.println("CaptiveConfigState::SERVING");
             }
             return false;
 
         case CaptiveConfigState::STARTING_HTTP:
+            Serial.print("CaptiveConfigState::STARTING_HTTP->");
             // This state takes about 500us
             configHTTPServer = new ESP8266WebServer(80);
             configHTTPServer->on("/getAPs", serveApJson);
@@ -100,28 +111,36 @@ bool CaptiveConfig::haveConfig()
             configHTTPServer->begin();
 
             state = CaptiveConfigState::STARTING_DNS;
+            Serial.println("CaptiveConfigState::STARTING_DNS");
             return false;
 
         case CaptiveConfigState::STARTING_DNS:
+          Serial.print("CaptiveConfigState::STARTING_DNS->");
             // This state takes about 200us
             configDNSServer = new DNSServer;
             configDNSServer->setTTL(0);
             configDNSServer->start(53, "*", captiveServeIP);
 
             state = CaptiveConfigState::SERVING;
+            Serial.println("CaptiveConfigState::SERVING");
             return false;
 
         case CaptiveConfigState::SERVING:
+          Serial.print("CaptiveConfigState::SERVING->");
             configDNSServer->processNextRequest();  // <500us
             configHTTPServer->handleClient();  // Depends on served page
 
             // storePassword() advances state to DONE
+            Serial.println("configHTTPServer->handleClient()");
             return false;
 
         case CaptiveConfigState::DONE:
+            Serial.println("CaptiveConfigState::DONE:");
+            WiFi.softAPdisconnect(true); // Turn off AP.  YOU CAN ACTUALLY LEAVE IT RUNNING AND HAVE BOTH AP AND CLIENT RUNNING AT SAME TIME!!!
             return true;
 
         default:
+            Serial.println("default: assert(0)");
             assert(0);
             return false;
     }
