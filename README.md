@@ -3,7 +3,9 @@
 # VCW Weather Station - Client and Simple Server
 Software that makes the website for [VCW](https://valleyworkspace.org) weather stations.
 
-[wemos-sensor.jpg]
+<img href="wemos-sensor.jpg"></img>
+
+## 
 
 Contributing
 ===
