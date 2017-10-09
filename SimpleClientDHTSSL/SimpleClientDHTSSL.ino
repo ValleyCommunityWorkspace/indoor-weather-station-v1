@@ -16,6 +16,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include "CaptiveConfig.h"
+#include "Button.h"
 
 #ifdef MOONBASE_BOARD
 #include <Wire.h>
@@ -243,6 +244,11 @@ void loop(void)
     static unsigned long loop_previouMillis = millis();    // run once
     unsigned long loop_currentMillis = millis();           // run every loop
 
+    static Button buttonD3(D3);
+
+    if (buttonD3.pushed(2000)) {
+      Serial.println("button pushed!");
+    }
 
     if (loop_currentMillis - loop_previouMillis <= 1000) {
       return;    /// NEXT loop()
