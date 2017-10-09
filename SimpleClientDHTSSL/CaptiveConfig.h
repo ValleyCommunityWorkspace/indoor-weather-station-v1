@@ -26,6 +26,8 @@ struct APCredentials
 {
     String ssid;
     String passphrase;
+    String email;
+    String location;
 };
 
 

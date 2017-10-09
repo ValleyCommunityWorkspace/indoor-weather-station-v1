@@ -52,6 +52,13 @@ bool CaptiveConfig::haveConfig()
     switch (state) {
         case CaptiveConfigState::START_SCANNING:
             Serial.print("CaptiveConfigState::START_SCANNING->");
+
+            // Prevent dumps at this point??
+            WiFi.softAPdisconnect(true); // Turn off AP.  YOU CAN ACTUALLY LEAVE IT RUNNING AND HAVE BOTH AP AND CLIENT RUNNING AT SAME TIME!!!
+            WiFi.disconnect(true); // try this too?
+            ESP.eraseConfig();
+            delay(250);
+            
             // Scan asynchronously, don't show hidden networks.
             // This puts WiFi in station mode and disconnects if required.
             // Takes roughly 120ms, mainly in switching to station mode.
@@ -137,6 +144,8 @@ bool CaptiveConfig::haveConfig()
         case CaptiveConfigState::DONE:
             Serial.println("CaptiveConfigState::DONE:");
             WiFi.softAPdisconnect(true); // Turn off AP.  YOU CAN ACTUALLY LEAVE IT RUNNING AND HAVE BOTH AP AND CLIENT RUNNING AT SAME TIME!!!
+            WiFi.disconnect(true); // try this too?
+            ESP.eraseConfig();
             return true;
 
         default:
@@ -282,7 +291,9 @@ String CaptiveConfig::makeApJson() const
 
     instance->pickedCreds = new APCredentials{
         instance->configHTTPServer->arg("ssid"),
-        instance->configHTTPServer->arg("pass")
+        instance->configHTTPServer->arg("pass"),
+        instance->configHTTPServer->arg("email"),
+        instance->configHTTPServer->arg("location")
         };
 
     instance->state = CaptiveConfigState::DONE;

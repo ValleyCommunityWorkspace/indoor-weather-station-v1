@@ -1,5 +1,5 @@
 
-#undef MOONBASE_BOARD
+// #define MOONBASE_BOARD
 /* WeMos DHT Server
  *
  * Connect to WiFi and respond to http requests with temperature and humidity
@@ -55,9 +55,12 @@ enum WiFiStateEnum { DOWN, STARTING, UP }    ;
 WiFiStateEnum WiFiState = DOWN;
 unsigned long WiFiStartTime = 0;
 int secs_waiting=0;
+int need_WickedNetworksPost=0;
 
 char saved_ssid[255] = "BADSSID";        /// replaced by user in ConfigAP
 char saved_password[255] = "BADPASSWD";  /// replaced by user in ConfigAP
+char saved_email[255] = "<email>";  /// replaced by user in ConfigAP
+char saved_location[255] = "<location>";  /// replaced by user in ConfigAP
 char DEVNAME[255] = "VCW100";
 char ISSUEID[255]  = "ZGKL01";
 
@@ -139,6 +142,7 @@ void WiFiEvent(WiFiEvent_t event) {
             Serial.println("IP address: ");
             Serial.println(WiFi.localIP());
             WiFiState = UP;
+            secs_waiting = 60;  // skip ahead
             break;
         case WIFI_EVENT_STAMODE_DISCONNECTED:
             WiFiState = DOWN;
@@ -150,9 +154,11 @@ void WiFiEvent(WiFiEvent_t event) {
 void WifiTryUp(const char* ssid, const char* password) {
     // delete old config
 
+    WiFi.onEvent(WiFiEvent);
+
     WiFi.disconnect(true);
 
-    delay(1000);
+    delay(250);  // was 1000
 
     WiFi.begin(ssid, password);
 
@@ -212,7 +218,17 @@ void setup(void)
 void loop(void)
 {
   
-    delay(500);  //TODO: Just for testing
+    static unsigned long loop_previouMillis = millis();    // run once
+    unsigned long loop_currentMillis = millis();           // run every loop
+
+
+    if (loop_currentMillis - loop_previouMillis <= 1000) {
+      return;    /// NEXT loop()
+    } else {
+        loop_previouMillis = loop_currentMillis;
+      /// Fall through to next, once-per second code.
+    }
+
       static CaptiveConfig *captiveConfig(nullptr);
       static auto haveConfig(false);
       if (!haveConfig) {
@@ -228,11 +244,19 @@ void loop(void)
               Serial.print(desiredConfig.ssid);
               Serial.print(" passphrase: ");
               Serial.println(desiredConfig.passphrase);
+              Serial.print(" email: ");
+              Serial.println(desiredConfig.email);
+              Serial.print(" location: ");
+              Serial.println(desiredConfig.location);
 
               desiredConfig.ssid.toCharArray(saved_ssid, 254);
               desiredConfig.passphrase.toCharArray(saved_password,254);
+              desiredConfig.email.toCharArray(saved_email, 254);
+              desiredConfig.location.toCharArray(saved_location,254);
   
               haveConfig = true;
+              secs_waiting = 60;  // jump ahead
+              
               delete captiveConfig;
               captiveConfig = nullptr;
           }
@@ -241,7 +265,6 @@ void loop(void)
     // return;
 
   if (secs_waiting < 59) {
-    delay(500);
     secs_waiting++;
     return;
   }
@@ -249,7 +272,7 @@ void loop(void)
   read_sensor();
 
   if (haveConfig) {
-    WiFi.onEvent(WiFiEvent);
+   
     
       // Connect to your WiFi network
       if (WiFiState == DOWN) {
@@ -265,6 +288,11 @@ void loop(void)
         httpsRequest(temperature,humidity, pressure); 
       }
   
+  }
+
+  if (need_WickedNetworksPost == 1) {
+    httpsPOSTWickedNetworksHotspotLogin();
+    need_WickedNetworksPost = 0;
   }
 
 }
@@ -333,6 +361,14 @@ void httpsRequest(float temp, float humid, float pressure) {
     yield();
     Serial.print("Header Line: ");
     Serial.println(line);
+
+    // SPECIAL - DETECT VCW WICKED NETWORKS LOGIN REDIRECTION PAGE
+    if (line.indexOf("Location: https://secure.wickednetworks.co.nz/login") > -1 ) {
+          Serial.println("SPECIAL WICKED NETWORKS REDIR");
+          // set var
+          need_WickedNetworksPost = 1;
+    }
+    
     if (line == String("\r") ) {
       Serial.println("headers received");
       break;
@@ -361,6 +397,71 @@ void httpsRequest(float temp, float humid, float pressure) {
   //Serial.println(line);
   //Serial.println("==========");
   //Serial.println("closing connection");
+
+
+}
+
+
+
+void httpsPOSTWickedNetworksHotspotLogin() {
+
+  // Use WiFiClientSecure class to create TLS connection
+  WiFiClientSecure client;
+  Serial.print("connecting HTTPS ");
+
+  const char* server = "secure.wickednetworks.co.nz";
+  Serial.println(server);
+  if (!client.connect(server, 443)) {
+    Serial.println("connection failed");
+    return;
+  }
+
+  if (client.verify(fingerprint, "www.shac.org.nz")) {
+    Serial.println("certificate matches");
+  } else {
+    Serial.println("certificate doesn't match");
+  }
+
+   String payload = "free_subscription=&password=uZC7FUX8&username=dev_subscription&dst=index.php%3Faction%3Dwelcome&x=109&y=113";
+   //String payload = "free_subscription&password=uZC7FUX8&username=dev_subscription";
+   client.println("POST /login HTTP/1.1");
+  client.println("Host: secure.wickednetworks.co.nz");
+  client.println("Cache-Control: no-cache");
+  client.println("Content-Type: application/x-www-form-urlencoded");
+  client.print("Content-Length: ");
+  client.println(payload.length());
+  client.println();
+  client.println(payload);
+
+
+  unsigned long _timeout = 1000;
+  unsigned long _startMillis = millis();
+  //while (client.connected()) {     // client.connected seems to not always work! - returns FALSE at this point sometimes.
+  
+  while (millis() - _startMillis < _timeout) {
+    String line = client.readStringUntil('\n');
+    yield();
+    Serial.print("Header Line: ");
+    Serial.println(line);
+    
+    if (line == String("\r") ) {
+      Serial.println("headers received");
+      break;
+    }
+  }
+  
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    yield();
+    if (line.startsWith("GMT:")) {
+      Serial.print("Got GMT: ");
+      Serial.println(line);
+    } else {
+      Serial.print("Body Line: ");
+      Serial.println(line);
+    }
+  }
+               
 
 
 }
