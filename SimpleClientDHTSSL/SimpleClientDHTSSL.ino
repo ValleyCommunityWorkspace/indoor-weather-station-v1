@@ -1,5 +1,7 @@
 
 // #define MOONBASE_BOARD
+//#define DHT_BOARD
+#define SHT30_BOARD
 /* WeMos DHT Server
  *
  * Connect to WiFi and respond to http requests with temperature and humidity
@@ -20,13 +22,19 @@
 #include <HTS221.h>
 #include <LPS25H.h>
 #include "PC8563.h" 
+#endif
 
-#else
+#ifdef  DHT_BOARD
 #include <DHT.h>
 #define DHTTYPE DHT22   // DHT Shield uses DHT 11
 #define DHTPIN D4       // DHT Shield uses pin D4
 #endif
 
+#ifdef  SHT30_BOARD
+#include <WEMOS_SHT3X.h>
+
+SHT3X sht30(0x45);
+#endif
 
 //extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
 
@@ -34,7 +42,7 @@ IPAddress server(120,138,27,109);
 bool humidityPresent, pressurePresent;
 
 
-#ifndef MOONBASE_BOARD
+#ifdef  DHT_BOARD
 // Initialize DHT sensor
 // Note that older versions of this library took an optional third parameter to
 // tweak the timings for faster processors.  This parameter is no longer needed
@@ -99,13 +107,23 @@ void read_sensor() {
     }
     if (pressurePresent)
       pressure = smePressure.readPressure();
-#else
+#endif
+#ifdef  DHT_BOARD
     // Reading temperature and humidity takes about 250 milliseconds!
     // Sensor readings may also be up to 2 seconds 'old' (it's a very slow sensor)
     humidity = dht.readHumidity();        // Read humidity as a percent
     temperature = dht.readTemperature();  // Read temperature as Celsius
 
 #endif
+
+#ifdef SHT30_BOARD
+     static SHT3X sht30(0x45);
+     sht30.get();  // 550 ms
+     humidity = sht30.humidity;
+     temperature = sht30.cTemp;
+#endif
+
+
     // Check if any reads failed and exit early (to try again).
     if (isnan(humidity) || isnan(temperature)) {
       Serial.println("Failed to read from sensors!");
@@ -196,14 +214,18 @@ void setup(void)
     PC8563_RTC.write(tm);
     
 
-#else
-
-
+#endif
+#ifdef  DHT_BOARD
   humidityPresent = 1;
   pressurePresent = 0;
   dht.begin();
   Serial.println("WeMos DHT Server");
+#endif
 
+#ifdef  SHT30_BOARD
+  humidityPresent = 1;
+  pressurePresent = 0;
+  Serial.println("WeMos SHT30 Server");
 #endif
 
   _ESP_id = ESP.getChipId();  // uint32 -> unsigned long on arduino

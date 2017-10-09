@@ -222,6 +222,16 @@ h2 {
   box-shadow: 0 1px 2px rgba(0,0,0,0.2) inset;
 }
 
+.main input {
+  font-size: 21px;
+  width: 100%;
+  padding: 10px;
+  
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2) inset;
+}
+
 .dialog header {
   margin-bottom: 20px;
 }
@@ -268,7 +278,7 @@ button.secondary {
     </style>
   </head>
   <body>
-  <form method="post" action="storePassword"></form>
+  <form method="post" action="storePassword">{% csrf_token %}</form>
 
   <template id="access-point">
     <!-- This template is only used by javascript -->
@@ -285,8 +295,10 @@ button.secondary {
 
   <div class="main">
     <h1>Station Setup</h1>
+    <p class="status">Enter your email address and the location of the sensor ("Hall","Main Bedroom",etc) &hellip;</p>
+    <div><input class="emailInput" placeholder="Email" /></div><br>
+    <div><input class="locationInput" placeholder="Sensor Location: (Hall,Bedroom,etc)" /></div><br>
     <p class="status">Choose a network for your weather station to connect to&hellip;</p>
-
     <div class="access-points-container">
       <!-- access points get put in here -->
       Loading&hellip;
@@ -350,7 +362,10 @@ function submitPasswordScreen() {
     return;
   }
 
-  submitAP(activeSsid, password);
+  emailInput = getEmailInput();
+  locationInput = getLocationInput();
+
+  submitAP(activeSsid, password, emailInput.value,locationInput.value);
   
   var submitButton = passwordScreen.querySelector(".submitButton");
   submitButton.textContent = "Working...";
@@ -363,7 +378,27 @@ function submitPasswordScreen() {
 
 }
 
-function submitAP(ssid, password) {
+
+function SubForm (f){
+    var formData = new FormData(f);
+    xhr = new XMLHttpRequest();
+    
+    xhr.onload = function() {
+      if (xhr.status == 200) {
+        // nothing 
+        cancelPasswordScreen();
+      } else {
+        console.log("SubForm:: Got bad form status");
+      }
+    }
+    
+    xhr.open("POST", f.action, true);
+    xhr.send(formData);
+    
+}
+
+
+function submitAP(ssid, password,email,location) {
   var s = document.createElement("input");
   s.name = "ssid";
   s.value = ssid;
@@ -371,14 +406,70 @@ function submitAP(ssid, password) {
   var p = document.createElement("input");
   p.name = "pass";
   p.value = password;
+  
+  var q = document.createElement("input");
+  q.name = "email";
+  q.value = email;
+  
+  var r = document.createElement("input");
+  r.name = "location";
+  r.value = location;
 
   var f = document.forms[0];
+  
+  var csrf = document.getElementsByName("csrfmiddlewaretoken")[0]
+  
+  // remove previous children.
+  while (f.firstChild) {
+    f.removeChild(f.firstChild);
+  }
+  if (csrf) {
+    f.appendChild(csrf)
+  }
+  
   f.appendChild(s);
   f.appendChild(p);
-  f.submit();
+  f.appendChild(q);
+  f.appendChild(r);
+  //f.submit();
+  SubForm(f);
+
 }
 
+function getEmailInput() {
+    var mainScreen = $$(".main");
+    var emailInput = mainScreen.querySelector(".emailInput");
+    return emailInput;
+}
+
+function getLocationInput() {
+    var mainScreen = $$(".main");
+    var locationInput = mainScreen.querySelector(".locationInput");
+    return locationInput;
+}
+
+
 function onClickAP() {
+  // jiggle email and/or location if not filled out.
+  emailInput = getEmailInput();
+  locationInput = getLocationInput();
+  
+  if (emailInput.value.length == 0) {
+    emailInput.classList.add("jiggle");
+    setTimeout(function() { 
+      return emailInput.classList.remove("jiggle")
+    }, 500);
+    return;
+  }
+  
+  if (locationInput.value.length == 0) {
+    locationInput.classList.add("jiggle");
+    setTimeout(function() { 
+      return locationInput.classList.remove("jiggle")
+    }, 500);
+    return;
+  }
+  
   var ssid = this.dataset.ssid;
   var encrypted = this.dataset.encrypted;
   if (encrypted) {
@@ -391,7 +482,7 @@ function onClickAP() {
     // it can cause the context (instructions/buttons) to be obscured.
     // passwordScreen.querySelector(".passwordInput").focus();
   } else {
-    submitAP(ssid);
+    submitAP(ssid,"",emailInput.value,locationInput.value);
   }
 }
 
@@ -475,6 +566,7 @@ function loadData(knownAPs) {
 function refreshData() {
     var xhr = new XMLHttpRequest();
     xhr.open("GET", "http://192.168.1.1/getAPs", true);
+    //xhr.open("GET", "http://127.0.0.1:8000/polls/getAPs/", true);
     xhr.responseType = "json";
     xhr.onload = function() {
       if (xhr.status == 200) {
@@ -484,6 +576,8 @@ function refreshData() {
       }
     };
     xhr.send();
+    
+    
 }
 
 refreshData();
