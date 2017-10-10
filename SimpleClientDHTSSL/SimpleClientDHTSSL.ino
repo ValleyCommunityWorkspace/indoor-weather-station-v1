@@ -17,6 +17,7 @@
 #include <WiFiClientSecure.h>
 #include "CaptiveConfig.h"
 #include "Button.h"
+#include "SequenceLED.h"
 
 #ifdef MOONBASE_BOARD
 #include <Wire.h>
@@ -246,8 +247,13 @@ void loop(void)
 
     static Button buttonD3(D3);
 
+    static SequenceLED ledD4(D4,HIGH);
+
+    ledD4.update();  // in loop.
+
     if (buttonD3.pushed(2000)) {
       Serial.println("button pushed!");
+      ledD4.startSequence("0101",500,false);
     }
 
     if (loop_currentMillis - loop_previouMillis <= 1000) {
