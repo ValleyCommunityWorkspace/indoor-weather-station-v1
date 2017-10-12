@@ -55,10 +55,15 @@ void SequenceLED::update() {
       }
   } 
   
-  
-
 }
 
+
+void SequenceLED::stopSequence() {
+
+      digitalWrite(_pin, _usualState);
+      _running = false;
+      return;
+}
 
 
 int hex_digit_to_int(char c) {

@@ -40,6 +40,9 @@ SHT3X sht30(0x45);
 
 //extern const char* DEVNAME; extern const char* ISSUEID; extern const char* ssid; extern const char* password;
 
+//#include <list>
+//extern std::list<WiFiEventHandler> sCbEventList;   // From ESP8266WiFiGeneric.cpp
+
 IPAddress server(120,138,27,109);
 bool humidityPresent, pressurePresent;
 
@@ -61,14 +64,15 @@ char str_humidity[10], str_temperature[10];  // Rounded sensor values and as str
 unsigned long previousMillis = 0;            // When the sensor was last read
 const long interval = 5000;                  // Wait this long until reading again
 unsigned long lastConnectionTime = 0;             // last time you connected to the server, in milliseconds
-enum WiFiStateEnum { DOWN, STARTING, UP }    ;
+enum WiFiStateEnum { DOWN, STARTING, UP, CONFIG }    ;
 WiFiStateEnum WiFiState = DOWN;
 unsigned long WiFiStartTime = 0;
 int secs_waiting=0;
 int need_WickedNetworksPost=0;
+bool WiFiEventEnable = true;
 
-char saved_ssid[255] = "BADSSID";        /// replaced by user in ConfigAP
-char saved_password[255] = "BADPASSWD";  /// replaced by user in ConfigAP
+char saved_ssid[255] = "";        /// replaced by user in ConfigAP
+char saved_password[255] = "";  /// replaced by user in ConfigAP
 char saved_email[255] = "<email>";  /// replaced by user in ConfigAP
 char saved_location[255] = "<location>";  /// replaced by user in ConfigAP
 char DEVNAME[255] = "VCW100";
@@ -154,39 +158,57 @@ void read_sensor() {
 }
 
 void WiFiEvent(WiFiEvent_t event) {
-    Serial.printf("[WiFi-event] event: %d\n", event);
-
-    switch(event) {
-        case WIFI_EVENT_STAMODE_GOT_IP:
-            Serial.println("WiFi connected");
-            Serial.println("IP address: ");
-            Serial.println(WiFi.localIP());
-            WiFiState = UP;
-            secs_waiting = 60;  // skip ahead
-            break;
-        case WIFI_EVENT_STAMODE_DISCONNECTED:
-            WiFiState = DOWN;
-            Serial.println("WiFi lost connection");
-            break;
+    if (WiFiEventEnable) {
+      Serial.printf("[WiFi-event] event: %d\n", event);
+  
+      switch(event) {
+          case WIFI_EVENT_STAMODE_GOT_IP:
+              Serial.println("WiFi connected");
+              Serial.println("IP address: ");
+              Serial.println(WiFi.localIP());
+              WiFiState = UP;
+              secs_waiting = 60;  // skip ahead
+              break;
+          case WIFI_EVENT_STAMODE_DISCONNECTED:
+              WiFiState = DOWN;
+              Serial.println("WiFi lost connection");
+              break;
+      }
     }
 }
 
-void WifiTryUp(const char* ssid, const char* password) {
-    // delete old config
+void WifiInitialTry() {
 
-    WiFi.onEvent(WiFiEvent);
-
-    WiFi.disconnect(true);
-
-    delay(250);  // was 1000
-
-    WiFi.begin(ssid, password);
-
-    Serial.println();
-    Serial.println();
-    Serial.println("Wait for WiFi... ");
-
+    WiFi.enableSTA(false);
+    delay(250);
+    WiFi.mode(WIFI_STA); 
+    delay(250);
+    
+    WiFi.begin(WiFi.SSID().c_str(),WiFi.psk().c_str());
+    Serial.println("Try Initial Wifi... ");
+    Serial.println(WiFi.SSID());
+    Serial.println(WiFi.psk());
 }
+
+
+//void WifiTryUp(const char* ssid, const char* password) {
+//    // delete old config
+//
+//    WiFi.onEvent(WiFiEvent);
+//
+//    WiFi.disconnect(true);
+//
+//    delay(250);  // was 1000
+//
+//    WiFi.begin(ssid, password);
+//
+//    Serial.println();
+//    Serial.println();
+//    Serial.println("Wait for WiFi... ");
+//    Serial.println(ssid);
+//    Serial.println(password);
+//
+//}
 
 unsigned long _ESP_id;
 void setup(void)
@@ -235,26 +257,47 @@ void setup(void)
   Serial.println("");
   // Initial read
   // read_sensor();
-  secs_waiting = 0;
+  secs_waiting = 50;   // initially fall through everything!
+  
+  //WiFi.persistent(false);
+  
 }
 
 
 void loop(void)
 {
-  
+
+    static CaptiveConfig *captiveConfig(nullptr);
+    static bool haveConfig(true);
+
     static unsigned long loop_previouMillis = millis();    // run once
     unsigned long loop_currentMillis = millis();           // run every loop
 
     static Button buttonD3(D3);
+    static SequenceLED ledD4(D4,HIGH);  // Off
 
-    static SequenceLED ledD4(D4,HIGH);
+    static unsigned long WiFiLastUPTime = millis();
+    static bool newConnection = true;
+
+    // RUN ONCE INITIAL SETUP
+    static bool needRegisterWiFiCallback(true);
+    if (needRegisterWiFiCallback) {
+        WiFi.onEvent(WiFiEvent);
+        needRegisterWiFiCallback = false;
+    }
+
 
     ledD4.update();  // in loop.
 
-    if (buttonD3.pushed(2000)) {
-      Serial.println("button pushed!");
-      ledD4.startSequence("0101",500,false);
+    if (buttonD3.pushed(5000)) {
+      Serial.println("Config Mode button pushed!");
+      ledD4.startSequence("0101",500,true);
+      haveConfig = false;
+      WiFiState = CONFIG; 
+      WiFiEventEnable = false;
     }
+
+    delay(10);
 
     if (loop_currentMillis - loop_previouMillis <= 1000) {
       return;    /// NEXT loop()
@@ -263,10 +306,15 @@ void loop(void)
       /// Fall through to next, once-per second code.
     }
 
-      static CaptiveConfig *captiveConfig(nullptr);
-      static auto haveConfig(false);
+    /// ONCE PER SECOND CODE::
+    
+      
       if (!haveConfig) {
           if (captiveConfig == nullptr) {
+              WiFi.mode(WIFI_AP_STA);          
+              delay(100);
+              WiFiState = CONFIG;
+              newConnection = true;
               captiveConfig = new CaptiveConfig;
           }
           Serial.println("haveConfig...");
@@ -293,10 +341,45 @@ void loop(void)
               
               delete captiveConfig;
               captiveConfig = nullptr;
+
+              WiFi.mode(WIFI_STA); 
+              WiFi.persistent(true);
+              WiFiEventEnable = true;
+              WiFiState = STARTING;
+              WiFi.begin(saved_ssid,saved_password);
+              WiFi.persistent(false);
+       
+              
+              ledD4.stopSequence();
           }
       }
     
-    // return;
+
+   // Connect to your WiFi network 
+    if (WiFiState == DOWN) {
+      WifiInitialTry();
+      WiFiState = STARTING;
+      WiFiStartTime = millis();
+    }
+    if (WiFiState == STARTING) {
+      if (millis() - WiFiStartTime > 120000) { 
+        WiFiState = DOWN; 
+        Serial.println("WiFi Connect Timeout"); 
+        ledD4.startSequence("101010111111",100,true);
+        }
+    }
+
+    if (WiFiState == UP) {
+      WiFiLastUPTime = millis();
+    }
+
+
+    if (millis() - WiFiLastUPTime > 20000 && WiFiState != CONFIG ) { 
+        Serial.println("WiFi Not Up for 20 seconds"); 
+        ledD4.startSequence("101010111111111111",50,false);
+    }
+
+    /// ONCE PER 60 SECONDS CODE:
 
   if (secs_waiting < 59) {
     secs_waiting++;
@@ -305,24 +388,19 @@ void loop(void)
   secs_waiting=0;
   read_sensor();
 
-  if (haveConfig) {
-   
-    
-      // Connect to your WiFi network
-      if (WiFiState == DOWN) {
-        WifiTryUp(saved_ssid,saved_password);
-        WiFiState = STARTING;
-        WiFiStartTime = millis();
+ 
+
+
+    if (WiFiState == UP) { 
+      if(httpsRequest(temperature,humidity, pressure)) {
+         ledD4.stopSequence();
+      } else {
+        Serial.println("connection failed LED");
+        ledD4.startSequence("101011111111111111",50,true);
       }
-      if (WiFiState == STARTING) {
-        if (millis() - WiFiStartTime > 120000) { WiFiState = DOWN; Serial.println("WiFi Connect Timeout"); }
-      }
-  
-      if (WiFiState == UP) { 
-        httpsRequest(temperature,humidity, pressure); 
-      }
-  
-  }
+    }
+
+ 
 
   if (need_WickedNetworksPost == 1) {
     httpsPOSTWickedNetworksHotspotLogin();
@@ -337,7 +415,7 @@ void loop(void)
 const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50 DD 5C";
 
 // this method makes a HTTP connection to the server:
-void httpsRequest(float temp, float humid, float pressure) {
+bool httpsRequest(float temp, float humid, float pressure) {
 
   // Use WiFiClientSecure class to create TLS connection
   WiFiClientSecure client;
@@ -345,7 +423,7 @@ void httpsRequest(float temp, float humid, float pressure) {
   Serial.println(server);
   if (!client.connect(server, 443)) {
     Serial.println("connection failed");
-    return;
+    return false;
   }
 
   if (client.verify(fingerprint, "www.shac.org.nz")) {
@@ -431,7 +509,7 @@ void httpsRequest(float temp, float humid, float pressure) {
   //Serial.println(line);
   //Serial.println("==========");
   //Serial.println("closing connection");
-
+  return(true);
 
 }
 

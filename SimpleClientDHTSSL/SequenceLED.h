@@ -15,6 +15,7 @@ public:
 	SequenceLED(uint8_t pin=D4, int usualState=HIGH);
 	void startSequence(const char * sequence, unsigned long tempo, bool repeat );
   void update();
+  void stopSequence();
   
 private:
 	uint8_t _pin;

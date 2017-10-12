@@ -52,12 +52,6 @@ bool CaptiveConfig::haveConfig()
     switch (state) {
         case CaptiveConfigState::START_SCANNING:
             Serial.print("CaptiveConfigState::START_SCANNING->");
-
-            // Prevent dumps at this point??
-            WiFi.softAPdisconnect(true); // Turn off AP.  YOU CAN ACTUALLY LEAVE IT RUNNING AND HAVE BOTH AP AND CLIENT RUNNING AT SAME TIME!!!
-            WiFi.disconnect(true); // try this too?
-            ESP.eraseConfig();
-            delay(250);
             
             // Scan asynchronously, don't show hidden networks.
             // This puts WiFi in station mode and disconnects if required.
@@ -144,8 +138,7 @@ bool CaptiveConfig::haveConfig()
         case CaptiveConfigState::DONE:
             Serial.println("CaptiveConfigState::DONE:");
             WiFi.softAPdisconnect(true); // Turn off AP.  YOU CAN ACTUALLY LEAVE IT RUNNING AND HAVE BOTH AP AND CLIENT RUNNING AT SAME TIME!!!
-            WiFi.disconnect(true); // try this too?
-            ESP.eraseConfig();
+            
             return true;
 
         default:
@@ -207,6 +200,9 @@ void CaptiveConfig::tearDownKnownAPs()
 {
     auto numToTearDown(numAPsFound);
     numAPsFound = 0;
+
+    //Serial.print("tearDownKnownAPs: numToTearDown");
+    //Serial.println(numToTearDown);
     
     for(auto i(0); i < numToTearDown; ++i) {
         if(knownAPs[i] != nullptr) {
@@ -215,7 +211,9 @@ void CaptiveConfig::tearDownKnownAPs()
         }
     }
 
-    delete [] knownAPs;
+    if (numToTearDown > 0) {
+      delete [] knownAPs;
+    }
 
     knownAPs = nullptr;
 }
