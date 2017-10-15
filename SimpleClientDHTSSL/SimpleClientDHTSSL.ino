@@ -466,6 +466,7 @@ bool httpsRequest(float temp, float humid, float pressure) {
 
   unsigned long _timeout = 1000;
   unsigned long _startMillis = millis();
+  String httpCode = "";
   //while (client.connected()) {     // client.connected seems to not always work! - returns FALSE at this point sometimes.
   
   while (millis() - _startMillis < _timeout) {
@@ -473,6 +474,11 @@ bool httpsRequest(float temp, float humid, float pressure) {
     yield();
     Serial.print("Header Line: ");
     Serial.println(line);
+
+    
+    if (line.startsWith("HTTP/1.1")) {
+        httpCode = line.substring(9,13);
+    }
 
     // SPECIAL - DETECT VCW WICKED NETWORKS LOGIN REDIRECTION PAGE
     if (line.indexOf("Location: https://secure.wickednetworks.co.nz/login") > -1 ) {
@@ -500,15 +506,9 @@ bool httpsRequest(float temp, float humid, float pressure) {
   }
 
 
-  Serial.println("Finished");
-  // read until return -1?????
-  //while (client.read() >= 0) {Serial.print("."); }
-  
-  //Serial.println("reply was:");
-  //Serial.println("==========");
-  //Serial.println(line);
-  //Serial.println("==========");
-  //Serial.println("closing connection");
+  Serial.print("Finished: ");
+  Serial.println(httpCode);
+
   return(true);
 
 }
