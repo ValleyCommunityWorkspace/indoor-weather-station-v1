@@ -18,6 +18,7 @@
 #include "CaptiveConfig.h"
 #include "Button.h"
 #include "SequenceLED.h"
+#include "UrlEncode.h"
 
 #ifdef MOONBASE_BOARD
 #include <Wire.h>
@@ -85,9 +86,9 @@ void read_sensor() {
   // Works better than delay for things happening elsewhere also.
   unsigned long currentMillis = millis();
 
-  if (currentMillis - previousMillis >= interval) {
-    // Save the last time you read the sensor
-    previousMillis = currentMillis;
+  //if (currentMillis - previousMillis >= interval) {
+  // // Save the last time you read the sensor
+  //  previousMillis = currentMillis;
 
 #ifdef MOONBASE_BOARD
     pc_time tm;
@@ -123,10 +124,18 @@ void read_sensor() {
 #endif
 
 #ifdef SHT30_BOARD
-     static SHT3X sht30(0x45);
-     sht30.get();  // 550 ms
-     humidity = sht30.humidity;
-     temperature = sht30.cTemp;
+     //static SHT3X sht30(0x45);
+
+     byte ret = 0;
+     if((ret = sht30.get()) == 0) {  // 550 ms
+      humidity = sht30.humidity;
+      temperature = sht30.cTemp;
+     } else {
+      Serial.print("SHT30 Read Error:");
+      Serial.println(ret);
+       humidity = 0.0;
+       temperature = 0.0;
+     }
 #endif
 
 
@@ -154,7 +163,7 @@ void read_sensor() {
       Serial.print(str_temperature);
       Serial.println(" °C");
     }
-  }
+  // }
 }
 
 void WiFiEvent(WiFiEvent_t event) {
@@ -279,6 +288,8 @@ void loop(void)
     static unsigned long WiFiLastUPTime = millis();
     static bool newConnection = true;
 
+    static bool need_Register = false;
+
     // RUN ONCE INITIAL SETUP
     static bool needRegisterWiFiCallback(true);
     if (needRegisterWiFiCallback) {
@@ -289,7 +300,7 @@ void loop(void)
 
     ledD4.update();  // in loop.
 
-    if (buttonD3.pushed(5000)) {
+    if (buttonD3.pushed(4000)) {
       Serial.println("Config Mode button pushed!");
       ledD4.startSequence("0101",500,true);
       haveConfig = false;
@@ -338,6 +349,8 @@ void loop(void)
   
               haveConfig = true;
               secs_waiting = 60;  // jump ahead
+
+              need_Register = true;
               
               delete captiveConfig;
               captiveConfig = nullptr;
@@ -373,6 +386,12 @@ void loop(void)
       WiFiLastUPTime = millis();
     }
 
+    if (need_Register & WiFiState == UP) {
+      if(httpsRegisterAndRedir(_ESP_id,saved_email,saved_location)) { //uint32, const char*, const char*
+        need_Register = false;
+      }
+    }
+
 
     if (millis() - WiFiLastUPTime > 20000 && WiFiState != CONFIG ) { 
         Serial.println("WiFi Not Up for 20 seconds"); 
@@ -386,13 +405,13 @@ void loop(void)
     return;
   }
   secs_waiting=0;
-  read_sensor();
+  
 
  
 
 
     if (WiFiState == UP) { 
-      if(httpsRequest(temperature,humidity, pressure)) {
+      if(httpsRequestAndRedir(temperature,humidity, pressure)) {
          ledD4.stopSequence();
       } else {
         Serial.println("connection failed LED");
@@ -405,6 +424,31 @@ void loop(void)
   if (need_WickedNetworksPost == 1) {
     httpsPOSTWickedNetworksHotspotLogin();
     need_WickedNetworksPost = 0;
+  }
+
+}
+
+
+bool httpsRequestAndRedir(float temp, float humid, float pressure) {
+
+  bool retvalue = false;
+
+  read_sensor();
+
+  retvalue = httpsRequest(temperature,humidity, pressure);
+
+  if (need_WickedNetworksPost == 1) {
+      delay(1000);
+      Serial.println("Doing Wicked Network Hotspot Login");
+      httpsPOSTWickedNetworksHotspotLogin();
+      need_WickedNetworksPost = 0;
+      Serial.println("Re-requesting sensor measurements");
+      delay(250);
+      return(httpsRequest( temp,  humid, pressure ));
+
+  } else {
+  
+      return(retvalue);
   }
 
 }
@@ -433,18 +477,13 @@ bool httpsRequest(float temp, float humid, float pressure) {
   }
 
  // We now create a URI for the request
-  String url = "/updateweatherstation.php?action=updateraw";
-  url += "&devid=";
+   String url = "/user/monitor/";
   url += String(_ESP_id,HEX);
-  url += "&devname=";
-  url += DEVNAME;
-  url += "&issueid=";
-  url += ISSUEID;
-  url += "&dateutc=now";
+  url += "/reading/?";
   if (humidityPresent) {
-    url += "&indoortemp=";
+    url += "&temp=";
     url += temp;
-    url += "&indoorhumidity=";
+    url += "&humid=";
     url += humid;
   } 
   if (pressurePresent) {
@@ -509,9 +548,127 @@ bool httpsRequest(float temp, float humid, float pressure) {
   Serial.print("Finished: ");
   Serial.println(httpCode);
 
+
   return(true);
 
 }
+
+bool httpsRegisterAndRedir(uint32 _ESP_id,const char * saved_email, const char * saved_location) { 
+
+  bool retvalue = false;
+
+  retvalue = httpsRegister( _ESP_id, saved_email, saved_location);
+
+  if (need_WickedNetworksPost == 1) {
+    delay(1000);
+    Serial.println("Register: Doing Wicked Network Hotspot Login");
+    httpsPOSTWickedNetworksHotspotLogin();
+    need_WickedNetworksPost = 0;
+    Serial.println("Register: Re-requesting registration");
+    delay(250);
+    return(httpsRegister( _ESP_id, saved_email, saved_location));
+  } else {
+
+    return(retvalue);
+  }
+  
+}
+
+
+bool httpsRegister(uint32 _ESP_id,const char * saved_email, const char * saved_location) { 
+
+
+  // Use WiFiClientSecure class to create TLS connection
+  WiFiClientSecure client;
+  Serial.print("connecting HTTPS ");
+  Serial.println(server);
+  if (!client.connect(server, 443)) {
+    Serial.println("connection failed");
+    return false;
+  }
+
+  if (client.verify(fingerprint, "www.shac.org.nz")) {
+    Serial.println("certificate matches");
+  } else {
+    Serial.println("certificate doesn't match");
+  }
+
+ // We now create a URI for the request
+  String url = "/user/monitor/";
+  url += String(_ESP_id,HEX);
+  url += "/register/?";
+  url += "&email=";
+  url += urlencode(saved_email);
+  url += "&location=";
+  url += urlencode(saved_location);
+ 
+  Serial.print("Requesting URL: ");
+  Serial.println(url);
+  
+  // This will send the request to the server
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+               "Host: " + "www.shac.org.nz" + "\r\n" + 
+               "User-Agent: indoor-wx-v0.1" + "\r\n" +
+               "Connection: close\r\n\r\n");
+
+  Serial.println("request sent");
+
+  //delay(100);
+
+  unsigned long _timeout = 1000;
+  unsigned long _startMillis = millis();
+  String httpCode = "";
+  //while (client.connected()) {     // client.connected seems to not always work! - returns FALSE at this point sometimes.
+  
+  while (millis() - _startMillis < _timeout) {
+    String line = client.readStringUntil('\n');
+    yield();
+    Serial.print("Header Line: ");
+    Serial.println(line);
+
+    
+    if (line.startsWith("HTTP/1.1")) {
+        httpCode = line.substring(9,13);
+    }
+
+    // SPECIAL - DETECT VCW WICKED NETWORKS LOGIN REDIRECTION PAGE
+    if (line.indexOf("Location: https://secure.wickednetworks.co.nz/login") > -1 ) {
+          Serial.println("SPECIAL WICKED NETWORKS REDIR");
+          // set var
+          need_WickedNetworksPost = 1;
+    }
+    
+    if (line == String("\r") ) {
+      Serial.println("headers received");
+      break;
+    }
+  }
+  
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    yield();
+    if (line.startsWith("GMT:")) {
+      Serial.print("Got GMT: ");
+      Serial.println(line);
+    } else {
+      Serial.print("Body Line: ");
+      Serial.println(line);
+    }
+  }
+
+
+  Serial.print("Finished: ");
+  Serial.println(httpCode);
+
+
+
+  
+
+  return(true);
+  
+}
+
+
 
 
 
