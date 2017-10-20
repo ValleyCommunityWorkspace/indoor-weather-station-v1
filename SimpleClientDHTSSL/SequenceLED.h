@@ -14,11 +14,9 @@ class SequenceLED {
 public:
 	SequenceLED(uint8_t pin=D4, int usualState=HIGH);
 	void startSequence(const char * sequence, unsigned long tempo, bool repeat );
-  void update();
   void stopSequence();
-  
-private:
-	uint8_t _pin;
+
+  uint8_t _pin;
   const char * _sequence;
   const char * _bar;
   unsigned long _tempo;
@@ -28,6 +26,9 @@ private:
   
   int _lastLEDState;
   unsigned long _lastLEDTime;
+  
+private:
+
 
 };
 

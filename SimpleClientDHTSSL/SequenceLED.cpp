@@ -1,5 +1,33 @@
 #include "SequenceLED.h"
 
+extern "C" {
+#include "user_interface.h"
+}
+
+os_timer_t myTimer;
+
+// start of timerCallback
+void timerCallback(void *pArg) {
+
+      SequenceLED * self = (SequenceLED *) pArg;
+
+      if (self->_running) {
+        self->_bar++;
+        if ( *(self->_bar) == 0 ) {
+            if (self->_repeat) { 
+              self->_bar = self->_sequence; 
+             } else {
+              digitalWrite(self->_pin, self->_usualState);
+              self->_running = false;
+              os_timer_arm((_ETSTIMER_*)&myTimer, self->_tempo, false);  // run 1 more time and stop.
+              return;
+            }
+         }
+         digitalWrite(self->_pin, *(self->_bar) - '0' );
+      }
+
+} // End of timerCallback
+
 /* Button Connected from pin to Ground
 */
 SequenceLED::SequenceLED(uint8_t pin, int usualState)
@@ -16,10 +44,9 @@ SequenceLED::SequenceLED(uint8_t pin, int usualState)
   digitalWrite(_pin, _usualState);
   //analogWriteRange(16);
   //analogWrite(_pin, PWMRANGE);
-  
+
+  os_timer_setfn((_ETSTIMER_*)&myTimer, timerCallback, this);
 }
-
-
 
 void SequenceLED::startSequence(const char * sequence, unsigned long tempo, bool repeat )
 {
@@ -34,34 +61,15 @@ void SequenceLED::startSequence(const char * sequence, unsigned long tempo, bool
   digitalWrite(_pin, *_bar - '0' );
   _lastLEDTime = millis();
 
+  os_timer_arm((_ETSTIMER_*)&myTimer, _tempo, true);
+
 }
-
-void SequenceLED::update() {
-
-  if (_running) {
-      if ( millis() - _lastLEDTime > _tempo ) {
-        _bar++;
-        if ( *_bar == 0 ) {
-          if (_repeat) { 
-            _bar = _sequence; 
-           } else {
-            digitalWrite(_pin, _usualState);
-            _running = false;
-            return;
-          }
-        }
-        digitalWrite(_pin, *_bar - '0' );
-        _lastLEDTime = millis();
-      }
-  } 
-  
-}
-
 
 void SequenceLED::stopSequence() {
 
       digitalWrite(_pin, _usualState);
       _running = false;
+      os_timer_arm((_ETSTIMER_*)&myTimer, _tempo, false);
       return;
 }
 
