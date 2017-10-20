@@ -278,7 +278,7 @@ button.secondary {
     </style>
   </head>
   <body>
-  <form method="post" action="storePassword">{% csrf_token %}</form>
+  <form method="post" action="storePassword"></form>
 
   <template id="access-point">
     <!-- This template is only used by javascript -->
@@ -401,18 +401,22 @@ function SubForm (f){
 function submitAP(ssid, password,email,location) {
   var s = document.createElement("input");
   s.name = "ssid";
+  s.type = "hidden";
   s.value = ssid;
 
   var p = document.createElement("input");
   p.name = "pass";
+  p.type = "hidden";
   p.value = password;
   
   var q = document.createElement("input");
   q.name = "email";
+  q.type = "hidden";
   q.value = email;
   
   var r = document.createElement("input");
   r.name = "location";
+  r.type = "hidden";
   r.value = location;
 
   var f = document.forms[0];
@@ -566,6 +570,7 @@ function loadData(knownAPs) {
 function refreshData() {
     var xhr = new XMLHttpRequest();
     xhr.open("GET", "http://192.168.1.1/getAPs", true);
+    //xhr.open("GET", "http://192.168.1.1:8000/polls/getAPs", true);
     //xhr.open("GET", "http://127.0.0.1:8000/polls/getAPs/", true);
     xhr.responseType = "json";
     xhr.onload = function() {
