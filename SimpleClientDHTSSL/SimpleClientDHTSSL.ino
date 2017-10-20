@@ -298,7 +298,7 @@ void loop(void)
     }
 
 
-    ledD4.update();  // in loop.
+    // NOW USES Timer!  ledD4.update();  // in loop.
 
     if (buttonD3.pushed(4000)) {
       Serial.println("Config Mode button pushed!");
@@ -496,7 +496,7 @@ bool httpsRequest(float temp, float humid, float pressure) {
   // This will send the request to the server
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                "Host: " + "www.shac.org.nz" + "\r\n" + 
-               "User-Agent: indoor-wx-v0.1" + "\r\n" +
+               "User-Agent: indoor-wx-v0.2" + "\r\n" +
                "Connection: close\r\n\r\n");
 
   Serial.println("request sent");
@@ -608,7 +608,7 @@ bool httpsRegister(uint32 _ESP_id,const char * saved_email, const char * saved_l
   // This will send the request to the server
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                "Host: " + "www.shac.org.nz" + "\r\n" + 
-               "User-Agent: indoor-wx-v0.1" + "\r\n" +
+               "User-Agent: indoor-wx-v0.2" + "\r\n" +
                "Connection: close\r\n\r\n");
 
   Serial.println("request sent");
