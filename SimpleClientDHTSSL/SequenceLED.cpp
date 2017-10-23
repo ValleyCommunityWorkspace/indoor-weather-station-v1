@@ -1,15 +1,13 @@
 #include "SequenceLED.h"
 
-extern "C" {
-#include "user_interface.h"
-}
+#include <Ticker.h>
 
-os_timer_t myTimer;
+Ticker myTimer;
 
 // start of timerCallback
-void timerCallback(void *pArg) {
+void timerCallback(SequenceLED * self) {
 
-      SequenceLED * self = (SequenceLED *) pArg;
+      //SequenceLED * self = (SequenceLED *) pArg;
 
       if (self->_running) {
         self->_bar++;
@@ -19,11 +17,12 @@ void timerCallback(void *pArg) {
              } else {
               digitalWrite(self->_pin, self->_usualState);
               self->_running = false;
-              os_timer_arm((_ETSTIMER_*)&myTimer, self->_tempo, false);  // run 1 more time and stop.
+              //os_timer_arm((_ETSTIMER_*)&myTimer, self->_tempo, false);  // run 1 more time and stop.
               return;
             }
          }
          digitalWrite(self->_pin, *(self->_bar) - '0' );
+         myTimer.once_ms(self->_tempo, timerCallback, self);
       }
 
 } // End of timerCallback
@@ -45,7 +44,7 @@ SequenceLED::SequenceLED(uint8_t pin, int usualState)
   //analogWriteRange(16);
   //analogWrite(_pin, PWMRANGE);
 
-  os_timer_setfn((_ETSTIMER_*)&myTimer, timerCallback, this);
+  //os_timer_setfn((_ETSTIMER_*)&myTimer, timerCallback, this);
 }
 
 void SequenceLED::startSequence(const char * sequence, unsigned long tempo, bool repeat )
@@ -61,7 +60,8 @@ void SequenceLED::startSequence(const char * sequence, unsigned long tempo, bool
   digitalWrite(_pin, *_bar - '0' );
   _lastLEDTime = millis();
 
-  os_timer_arm((_ETSTIMER_*)&myTimer, _tempo, true);
+  myTimer.once_ms(_tempo, timerCallback, this);
+  //os_timer_arm((_ETSTIMER_*)&myTimer, _tempo, true);
 
 }
 
@@ -69,7 +69,7 @@ void SequenceLED::stopSequence() {
 
       digitalWrite(_pin, _usualState);
       _running = false;
-      os_timer_arm((_ETSTIMER_*)&myTimer, _tempo, false);
+      //os_timer_arm((_ETSTIMER_*)&myTimer, _tempo, false);
       return;
 }
 
