@@ -282,13 +282,16 @@ void loop(void)
     static unsigned long loop_previouMillis = millis();    // run once
     unsigned long loop_currentMillis = millis();           // run every loop
 
-    static Button buttonD3(D3);
+    static Button buttonD3_short(D3,50);
+    static Button buttonD3_long(D3,4000);
     static SequenceLED ledD4(D4,HIGH);  // Off
 
     static unsigned long WiFiLastUPTime = millis();
     static bool newConnection = true;
 
     static bool need_Register = false;
+
+    static int lastButton = 0;
 
     // RUN ONCE INITIAL SETUP
     static bool needRegisterWiFiCallback(true);
@@ -300,12 +303,18 @@ void loop(void)
 
     // NOW USES Timer!  ledD4.update();  // in loop.
 
-    if (buttonD3.pushed(4000)) {
+    if (buttonD3_long.pushed()) {
       Serial.println("Config Mode button pushed!");
       ledD4.startSequence("0101",500,true);
       haveConfig = false;
       WiFiState = CONFIG; 
       WiFiEventEnable = false;
+    }
+
+    // Skip ahead if button pushed
+    if (buttonD3_short.pushed()) {
+        secs_waiting = 60;
+        lastButton = 1;
     }
 
     delay(10);
@@ -348,7 +357,7 @@ void loop(void)
               desiredConfig.location.toCharArray(saved_location,254);
   
               haveConfig = true;
-              secs_waiting = 60;  // jump ahead
+              secs_waiting = 57;  // jump ahead
 
               need_Register = true;
               
@@ -359,6 +368,7 @@ void loop(void)
               WiFi.persistent(true);
               WiFiEventEnable = true;
               WiFiState = STARTING;
+              WiFiStartTime = millis();
               WiFi.begin(saved_ssid,saved_password);
               WiFi.persistent(false);
        
@@ -411,12 +421,13 @@ void loop(void)
 
 
     if (WiFiState == UP) { 
-      if(httpsRequestAndRedir(temperature,humidity, pressure)) {
+      if(httpsRequestAndRedir(temperature,humidity, pressure, lastButton )) {
          ledD4.stopSequence();
       } else {
         Serial.println("connection failed LED");
         ledD4.startSequence("101011111111111111",50,true);
       }
+      lastButton=0;
     }
 
  
@@ -429,13 +440,13 @@ void loop(void)
 }
 
 
-bool httpsRequestAndRedir(float temp, float humid, float pressure) {
+bool httpsRequestAndRedir(float temp, float humid, float pressure, int buttonval) {
 
   bool retvalue = false;
 
   read_sensor();
 
-  retvalue = httpsRequest(temperature,humidity, pressure);
+  retvalue = httpsRequest(temperature,humidity, pressure, buttonval);
 
   if (need_WickedNetworksPost == 1) {
       delay(1000);
@@ -444,7 +455,7 @@ bool httpsRequestAndRedir(float temp, float humid, float pressure) {
       need_WickedNetworksPost = 0;
       Serial.println("Re-requesting sensor measurements");
       delay(250);
-      return(httpsRequest( temp,  humid, pressure ));
+      return(httpsRequest( temp,  humid, pressure, buttonval ));
 
   } else {
   
@@ -459,7 +470,7 @@ bool httpsRequestAndRedir(float temp, float humid, float pressure) {
 const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50 DD 5C";
 
 // this method makes a HTTP connection to the server:
-bool httpsRequest(float temp, float humid, float pressure) {
+bool httpsRequest(float temp, float humid, float pressure, int buttonval) {
 
   // Use WiFiClientSecure class to create TLS connection
   WiFiClientSecure client;
@@ -485,6 +496,8 @@ bool httpsRequest(float temp, float humid, float pressure) {
     url += temp;
     url += "&humid=";
     url += humid;
+    url += "&button=";
+    url += buttonval;
   } 
   if (pressurePresent) {
     url += "&indoorpressure=";

@@ -11,13 +11,14 @@
 
 class Button {
 public:
-	Button(uint8_t pin=D3);
-	bool pushed(unsigned long duration=1000);
+	Button(uint8_t pin=D3,unsigned long duration=1000);
+	bool pushed();
 	
 private:
 	uint8_t _pin;
   int _lastButtonState;
   unsigned long _lastDebounceTime;
+  unsigned long _duration;
 
 };
 

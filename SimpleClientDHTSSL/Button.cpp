@@ -2,9 +2,10 @@
 
 /* Button Connected from pin to Ground
 */
-Button::Button(uint8_t pin)
+Button::Button(uint8_t pin,unsigned long duration)
 {
 	_pin=pin;
+  _duration=duration;
   _lastButtonState = HIGH;
   _lastDebounceTime = millis();
  pinMode(_pin, INPUT_PULLUP);
@@ -13,7 +14,7 @@ Button::Button(uint8_t pin)
 
 
 
-bool Button::pushed(unsigned long duration)
+bool Button::pushed()
 {
   
     int reading = digitalRead(_pin);
@@ -22,7 +23,7 @@ bool Button::pushed(unsigned long duration)
       _lastButtonState = HIGH;
     }
 
-    if ((millis() - _lastDebounceTime) > duration) {
+    if ((millis() - _lastDebounceTime) > _duration) {
       if (_lastButtonState != reading) {
           _lastButtonState = reading;
           return true;
